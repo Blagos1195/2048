@@ -1,0 +1,21 @@
+{
+  "generation": 3598,
+  "episode": 3598,
+  "max_tile": 512,
+  "score": 1328.44,
+  "timestamp": 1793115840.263637,
+  "algorithm": "DQN",
+  "architecture": [
+    272,
+    96,
+    64,
+    4
+  ],
+  "training_steps": 116318,
+  "environment_steps": 465530,
+  "epsilon": 0.04,
+  "recent_average_score": 1328.44,
+  "best_evaluation_quality": 2566.448736417605,
+  "state_encoding": "tile_planes",
+  "reward_scale": 128.0
+}

@@ -1,0 +1,31 @@
+{
+  "generation": 5000,
+  "episode": 5000,
+  "max_tile": 512,
+  "score": 3585.44,
+  "timestamp": 1793144493.1012127,
+  "algorithm": "DQN",
+  "architecture": [
+    272,
+    96,
+    64,
+    4
+  ],
+  "training_steps": 197410,
+  "environment_steps": 789897,
+  "epsilon": 0.04,
+  "games": 50,
+  "average_score": 3585.44,
+  "median_score": 3330.0,
+  "average_max_tile": 299.52,
+  "best_max_tile": 512,
+  "reached_2048_rate": 0.0,
+  "average_moves": 281.7,
+  "best_run_score": 7112,
+  "best_run_max_tile": 512,
+  "evaluation_quality": 4408.090852980868,
+  "state_encoding": "tile_planes",
+  "reward_scale": 128.0,
+  "survival_reward": 0.01,
+  "terminal_penalty": 1.0
+}
