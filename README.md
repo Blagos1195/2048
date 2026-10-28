@@ -67,3 +67,10 @@ Exploration decays over 400,000 environment moves rather than 120,000.
 The previous `models/log_reward128` checkpoint and CSV should be kept for
 comparison. Evaluate the new run against the same fixed evaluation seeds and
 compare average score, average maximum tile, and 2048 success rate.
+
+
+## New standalone self-learning AI
+
+The new from-scratch self-learning agent is documented in [README_SELFPLAY.md](README_SELFPLAY.md). It uses a learned n-tuple temporal-difference value function with Expectimax search and self-play. It does not require the existing DQN, pygame, PyTorch, a pretrained checkpoint, or a paid service.
+
+Install and test it with `python -m pip install -r requirements-selfplay.txt` and `python -m pytest -q tests/test_selfplay.py`. Start training with `python selfplay_ai.py train`. The default run writes learned checkpoints and metrics to `models/selfplay/`; see the standalone guide for evaluation and resume commands.
