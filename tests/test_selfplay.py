@@ -75,3 +75,18 @@ def test_agent_selects_legal_move():
     agent = ExpectimaxAgent(evaluator, depth=1, seed=2)
     board = Game2048(3).board
     assert agent.choose_action(board) in legal_actions(board)
+
+
+def test_expected_spawn_value_matches_explicit_enumeration():
+    evaluator = NTupleValue(seed=7)
+    rng = np.random.default_rng(8)
+    evaluator.weights[:] = rng.normal(0.0, 0.01, evaluator.weights.shape).astype(np.float32)
+    board = np.array([[2, 0, 4, 0], [0, 8, 0, 0], [0, 0, 0, 0], [2, 0, 0, 0]], dtype=np.uint32)
+    expected = 0.0
+    empty = np.argwhere(board == 0)
+    for r, c in empty:
+        for tile, probability in ((2, 0.9), (4, 0.1)):
+            child = board.copy()
+            child[r, c] = tile
+            expected += probability * evaluator.value(child) / len(empty)
+    assert evaluator.expected_spawn_value(board) == pytest.approx(expected, abs=1e-6)
