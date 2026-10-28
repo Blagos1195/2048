@@ -1,9 +1,9 @@
 {
-  "generation": 5867,
-  "episode": 5867,
-  "max_tile": 512,
-  "score": 2391.44,
-  "timestamp": 1793144894.2405992,
+  "generation": 8900,
+  "episode": 8900,
+  "max_tile": 1024,
+  "score": 2494.92,
+  "timestamp": 1793148112.7035785,
   "algorithm": "DQN",
   "architecture": [
     272,
@@ -11,11 +11,11 @@
     64,
     4
   ],
-  "training_steps": 239924,
-  "environment_steps": 959956,
+  "training_steps": 397099,
+  "environment_steps": 1588658,
   "epsilon": 0.04,
-  "recent_average_score": 2391.44,
-  "best_evaluation_quality": 4408.090852980868,
+  "recent_average_score": 2494.92,
+  "best_evaluation_quality": 4934.85232911629,
   "state_encoding": "tile_planes",
   "reward_scale": 128.0
 }
