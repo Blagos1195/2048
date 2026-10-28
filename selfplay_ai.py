@@ -19,6 +19,10 @@ PATTERNS = tuple(
 )
 PATTERN_COUNT = len(PATTERNS)
 PATTERN_TABLE_SIZE = BASE ** 4
+PATTERN_MEMBERSHIP = {cell: [] for cell in range(16)}
+for _p, _cells in enumerate(PATTERNS):
+    for _pos, _cell in enumerate(_cells):
+        PATTERN_MEMBERSHIP[_cell].append((_p, _pos))
 
 
 def exponent_board(board: np.ndarray) -> np.ndarray:
@@ -114,7 +118,7 @@ def pattern_indices(board: np.ndarray) -> np.ndarray:
 
 
 class NTupleValue:
-    """Learned board evaluator; all table weights start at zero and change via TD updates."""
+    """Learned board evaluator; weights start at zero and change via real TD updates."""
     def __init__(self, alpha: float = 0.08, gamma: float = 0.995, seed: int = 1):
         self.weights = np.zeros((PATTERN_COUNT, PATTERN_TABLE_SIZE), dtype=np.float32)
         self.alpha = float(alpha)
@@ -126,8 +130,27 @@ class NTupleValue:
         indices = pattern_indices(board)
         return float(self.weights[np.arange(PATTERN_COUNT), indices].sum(dtype=np.float64))
 
+    def expected_spawn_value(self, board: np.ndarray) -> float:
+        """Exact expected evaluator after one random spawn, without allocating child boards."""
+        flat = np.asarray(board).reshape(-1)
+        empty = np.flatnonzero(flat == 0)
+        if len(empty) == 0:
+            return self.value(board)
+        indices = pattern_indices(board)
+        base_value = float(self.weights[np.arange(PATTERN_COUNT), indices].sum(dtype=np.float64))
+        total = 0.0
+        for cell_value in empty:
+            cell = int(cell_value)
+            for exponent, probability in ((1, 0.9), (2, 0.1)):
+                value = base_value
+                for pattern, position in PATTERN_MEMBERSHIP[cell]:
+                    new_index = int(indices[pattern]) + exponent * (BASE ** (3 - position))
+                    value += float(self.weights[pattern, new_index] - self.weights[pattern, indices[pattern]])
+                total += probability * value
+        return total / len(empty)
+
     def update(self, state: np.ndarray, reward: float, next_state: np.ndarray, terminal: bool) -> float:
-        """Semi-gradient TD(0): fit current value to reward plus discounted next value."""
+        """Semi-gradient TD(0): fit value to reward plus discounted next-state value."""
         indices = pattern_indices(state)
         current = float(self.weights[np.arange(PATTERN_COUNT), indices].sum(dtype=np.float64))
         target = float(reward) + (0.0 if terminal else self.gamma * self.value(next_state))
@@ -179,13 +202,12 @@ class ExpectimaxAgent:
         moved, merge_score = apply_action(board, action)
         if np.array_equal(moved, board):
             return -1e30
-        immediate = merge_score / 128.0
-        if depth <= 1:
-            return immediate + self.evaluator.value(moved)
-        return immediate + self._chance(moved, depth - 1)
+        return merge_score / 128.0 + self._chance(moved, depth - 1)
 
     def _chance(self, board: np.ndarray, depth: int) -> float:
         self.nodes += 1
+        if depth <= 0:
+            return self.evaluator.expected_spawn_value(board)
         empty = np.argwhere(board == 0)
         if len(empty) == 0:
             return self.evaluator.value(board) if can_move(board) else -2.0
@@ -234,7 +256,7 @@ def play_game(agent: ExpectimaxAgent, seed: int, train: bool = False, max_moves:
     }
 
 
-def evaluate(evaluator: NTupleValue, games: int = 50, depth: int = 2, seed_start: int = 900_000) -> dict:
+def evaluate(evaluator: NTupleValue, games: int = 50, depth: int = 1, seed_start: int = 900_000) -> dict:
     agent = ExpectimaxAgent(evaluator, depth=depth, seed=seed_start)
     rows = [play_game(agent, seed_start + i, train=False) for i in range(games)]
     scores = np.asarray([r["score"] for r in rows], dtype=np.float64)
