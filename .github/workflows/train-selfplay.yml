@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/train-selfplay.yml'
+      - 'selfplay_ai.py'
+      - 'tests/test_selfplay.py'
+      - 'requirements-selfplay.txt'
   workflow_dispatch:
 
 permissions:
@@ -51,10 +54,10 @@ jobs:
           fi
           if [ -f models/selfplay/latest.npz ]; then
             echo "Resuming from the latest committed checkpoint"
-            python selfplay_ai.py train --games 45000 --depth 1 --eval-every 2500 --eval-games 20 --eval-depth 1 --log-every 100 --out models/selfplay --resume models/selfplay/latest.npz --resume-metrics
+            python selfplay_ai.py train --games 45000 --depth 1 --workers 3 --eval-every 2500 --eval-games 20 --eval-depth 1 --log-every 100 --out models/selfplay --resume models/selfplay/latest.npz --resume-metrics
           else
             echo "No checkpoint exists; training starts from zero weights"
-            python selfplay_ai.py train --games 45000 --depth 1 --eval-every 2500 --eval-games 20 --eval-depth 1 --log-every 100 --out models/selfplay
+            python selfplay_ai.py train --games 45000 --depth 1 --workers 3 --eval-every 2500 --eval-games 20 --eval-depth 1 --log-every 100 --out models/selfplay
           fi
 
       - name: Evaluate best learned checkpoint
@@ -64,6 +67,14 @@ jobs:
           --games 100
           --depth 1
           --seed 3000000
+
+      - name: Benchmark search depths on the same fixed seeds
+        run: >-
+          python selfplay_ai.py benchmark
+          --model models/selfplay/best.npz
+          --games 10
+          --depths 1 2
+          --seed 4000000
 
       - name: Upload trained model and training metrics
         if: always()
