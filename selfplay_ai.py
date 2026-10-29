@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import csv
 import random
 import time
@@ -358,9 +359,16 @@ def _apply_collected_episode(evaluator: NTupleValue, transitions: list) -> float
 
 def train(args: argparse.Namespace) -> None:
     evaluator = NTupleValue(alpha=args.alpha, gamma=args.gamma, seed=args.seed)
+    episode_base = 0
     if args.resume:
         evaluator.load(args.resume)
-        print(f"Loaded {args.resume}; learned updates: {evaluator.updates}", flush=True)
+        try:
+            with np.load(args.resume, allow_pickle=False) as checkpoint:
+                metadata = ast.literal_eval(str(checkpoint["metadata"].item()))
+                episode_base = int(metadata.get("episode", metadata.get("episodes", 0)))
+        except (OSError, ValueError, SyntaxError, AttributeError):
+            episode_base = 0
+        print(f"Loaded {args.resume}; learned updates: {evaluator.updates}; prior episodes: {episode_base}", flush=True)
     agent = ExpectimaxAgent(evaluator, depth=args.depth, seed=args.seed, epsilon=args.epsilon)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -384,7 +392,7 @@ def train(args: argparse.Namespace) -> None:
                 champion = NTupleValue(alpha=args.alpha, gamma=args.gamma, seed=args.seed)
                 champion.load(existing_best)
                 prior = evaluate(champion, games=args.eval_games, depth=args.eval_depth,
-                                 seed_start=args.eval_seed + 7_000_000)
+                                 seed_start=args.eval_seed)
                 best_eval = prior["avg_score"] + 500.0 * prior["rate_2048"] + 1000.0 * prior["rate_4096"]
                 print(f"Existing champion validation quality: {best_eval:.2f}", flush=True)
             except (OSError, ValueError, KeyError) as exc:
@@ -409,12 +417,13 @@ def train(args: argparse.Namespace) -> None:
             while episode < args.games:
                 batch_size = 1 if workers == 1 else workers * 2
                 if args.eval_every:
-                    next_eval = ((episode // args.eval_every) + 1) * args.eval_every
-                    batch_size = min(batch_size, next_eval - episode)
+                    completed_absolute = episode_base + episode
+                    next_eval = ((completed_absolute // args.eval_every) + 1) * args.eval_every
+                    batch_size = min(batch_size, next_eval - completed_absolute)
                 batch_size = min(batch_size, args.games - episode)
                 tasks = []
                 for offset in range(1, batch_size + 1):
-                    absolute_episode = episode + offset
+                    absolute_episode = episode_base + episode + offset
                     epsilon = max(args.min_epsilon, args.epsilon * (args.epsilon_decay ** (absolute_episode - 1)))
                     tasks.append((args.seed + absolute_episode, epsilon))
 
@@ -433,8 +442,9 @@ def train(args: argparse.Namespace) -> None:
 
                 for result in batch:
                     episode += 1
-                    epsilon = max(args.min_epsilon, args.epsilon * (args.epsilon_decay ** (episode - 1)))
-                    writer.writerow({"episode": episode, "score": result["score"], "max_tile": result["max_tile"],
+                    absolute_episode = episode_base + episode
+                    epsilon = max(args.min_epsilon, args.epsilon * (args.epsilon_decay ** (absolute_episode - 1)))
+                    writer.writerow({"episode": absolute_episode, "score": result["score"], "max_tile": result["max_tile"],
                                      "moves": result["moves"], "epsilon": epsilon,
                                      "td_abs_mean": result["td_abs_mean"], "updates": evaluator.updates})
                     f.flush()
@@ -444,18 +454,18 @@ def train(args: argparse.Namespace) -> None:
                               f"moves {result['moves']} | epsilon {epsilon:.3f} | workers {workers} | "
                               f"TD updates {evaluator.updates:,} | {elapsed:.1f}s", flush=True)
 
-                if args.eval_every and episode % args.eval_every == 0:
+                if args.eval_every and (episode_base + episode) % args.eval_every == 0:
                     report = evaluate(evaluator, games=args.eval_games, depth=args.eval_depth,
-                                      seed_start=args.eval_seed + episode * args.eval_games)
+                                      seed_start=args.eval_seed)
                     print("EVAL " + " | ".join(f"{k}={v:.3f}" if isinstance(v, float) else f"{k}={v}"
                                                 for k, v in report.items()), flush=True)
-                    evaluator.save(out / "latest.npz", {"episode": episode, "evaluation": report, "workers": workers})
+                    evaluator.save(out / "latest.npz", {"episode": episode_base + episode, "evaluation": report, "workers": workers})
                     quality = report["avg_score"] + 500.0 * report["rate_2048"] + 1000.0 * report["rate_4096"]
                     if quality > best_eval:
                         best_eval = quality
-                        evaluator.save(out / "best.npz", {"episode": episode, "evaluation": report, "workers": workers})
+                        evaluator.save(out / "best.npz", {"episode": episode_base + episode, "evaluation": report, "workers": workers})
                         print(f"New champion saved: {out / 'best.npz'}", flush=True)
-            evaluator.save(out / "latest.npz", {"episodes": args.games, "workers": workers})
+            evaluator.save(out / "latest.npz", {"episodes": episode_base + args.games, "workers": workers})
             print(f"Training finished. Latest model: {out / 'latest.npz'}")
             print(f"Best evaluated model: {out / 'best.npz'}")
         finally:
