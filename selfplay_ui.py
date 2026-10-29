@@ -361,9 +361,9 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
         else:
             draw_button(info_rect, "Your Stats")
         footer_text = ("AI thinking..." if move_plan["busy"] else "AI ready") if not game_over else "Game over"
-        hint = footer_text if mode == 3 else ("Press any key to move" if not game_over else "Game over")
-        hint_surface = tiny.render(hint, True, TEXT)
-        screen.blit(hint_surface, hint_surface.get_rect(center=(width // 2, height - 12)))
+        if mode == 3:
+            hint_surface = tiny.render(footer_text, True, TEXT)
+            screen.blit(hint_surface, hint_surface.get_rect(center=(width // 2, height - 12)))
 
         if stats_visible and mode == 4:
             panel_w = min(width - 32, 320)
