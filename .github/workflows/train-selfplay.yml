@@ -1,13 +1,8 @@
 name: Train self-learning 2048 AI
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/train-selfplay.yml'
-      - 'selfplay_ai.py'
-      - 'tests/test_selfplay.py'
-      - 'requirements-selfplay.txt'
+  # Training is deliberately manual: code pushes and model commits must not
+  # unexpectedly consume hours of runner time.
   workflow_dispatch:
 
 permissions:
@@ -50,11 +45,7 @@ jobs:
           set -euo pipefail
           mkdir -p models/selfplay
           echo "No committed checkpoint found; recovering the saved checkpoint from the previous run artifact."
-          curl --fail --silent --show-error --location \\
-            -H "Authorization: Bearer $GH_TOKEN" \\
-            -H "Accept: application/vnd.github+json" \\
-            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/12923588285/zip" \\
-            -o /tmp/selfplay-recovery.zip
+          curl --fail --silent --show-error --location -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/12923588285/zip" -o /tmp/selfplay-recovery.zip
           unzip -o /tmp/selfplay-recovery.zip -d models/selfplay
           test -s models/selfplay/latest.npz
           test -s models/selfplay/best.npz
