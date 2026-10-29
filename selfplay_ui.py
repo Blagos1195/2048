@@ -91,6 +91,8 @@ def train_view(mode: int, games_target: int, depth: int, out: str, seed: int):
         for event in pygame.event.get():
             if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
                 running = False
+            elif event.type == pygame.VIDEORESIZE:
+                screen = pygame.display.set_mode((max(640, event.w), max(480, event.h)), pygame.RESIZABLE)
 
         for _ in range(speed):
             for i, game in enumerate(games):
