@@ -144,4 +144,13 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\nInterrupted. Shutting down cleanly...")
+        try:
+            import pygame
+            if pygame.get_init():
+                pygame.quit()
+        except ImportError:
+            pass
