@@ -2,7 +2,7 @@ name: Train self-learning 2048 AI
 
 on:
   push:
-    branches: [main, main-selfplay-integration]
+    branches: [main]
     paths:
       - '.github/workflows/train-selfplay.yml'
   workflow_dispatch:
@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: selfplay-training
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   train:
