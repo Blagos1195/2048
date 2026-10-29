@@ -416,8 +416,6 @@ def train(args: argparse.Namespace) -> None:
                     tasks.append((args.seed + absolute_episode, epsilon))
 
                 if pool is None:
-                    result = play_game(agent, tasks[0][0], train=False)
-                    # Re-run as a transition collector so the same TD update path is used.
                     collected = _collect_episode_local(evaluator, tasks[0][0], tasks[0][1], args.depth)
                     result = {k: v for k, v in collected.items() if k != "transitions"}
                     result["td_abs_mean"] = _apply_collected_episode(evaluator, collected["transitions"])
