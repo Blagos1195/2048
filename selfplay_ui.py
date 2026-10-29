@@ -156,7 +156,6 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
     pygame.init()
     screen = pygame.display.set_mode((520, 700), pygame.RESIZABLE)
     pygame.display.set_caption("2048")
-    pygame.display.set_minimum_size((360, 480))
     clock = pygame.time.Clock()
     game = Game2048(seed)
     auto = mode == 3
