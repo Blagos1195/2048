@@ -286,6 +286,18 @@ def train(args: argparse.Namespace) -> None:
         if write_header:
             writer.writeheader()
         best_eval = -float("inf")
+        existing_best = out / "best.npz"
+        if args.resume and existing_best.exists():
+            try:
+                champion = NTupleValue(alpha=args.alpha, gamma=args.gamma, seed=args.seed)
+                champion.load(existing_best)
+                prior = evaluate(champion, games=args.eval_games, depth=args.eval_depth,
+                                 seed_start=args.eval_seed + 7_000_000)
+                best_eval = (prior["avg_score"] + 500.0 * prior["rate_2048"]
+                             + 1000.0 * prior["rate_4096"])
+                print(f"Existing champion validation quality: {best_eval:.2f}", flush=True)
+            except (OSError, ValueError, KeyError) as exc:
+                print(f"Could not validate existing best checkpoint ({exc}); selecting a new one.", flush=True)
         started = time.time()
         for episode in range(1, args.games + 1):
             agent.epsilon = max(args.min_epsilon, args.epsilon * (args.epsilon_decay ** (episode - 1)))
