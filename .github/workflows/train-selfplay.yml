@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 concurrency:
   group: selfplay-training
@@ -39,6 +40,27 @@ jobs:
 
       - name: Run tests
         run: python -m pytest -q tests/test_selfplay.py
+
+      - name: Recover the checkpoint from the interrupted training run
+        if: hashFiles('models/selfplay/latest.npz') == ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p models/selfplay
+          echo "No committed checkpoint found; recovering the saved checkpoint from the previous run artifact."
+          curl --fail --silent --show-error --location \\
+            -H "Authorization: Bearer $GH_TOKEN" \\
+            -H "Accept: application/vnd.github+json" \\
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/12923588285/zip" \\
+            -o /tmp/selfplay-recovery.zip
+          unzip -o /tmp/selfplay-recovery.zip -d models/selfplay
+          test -s models/selfplay/latest.npz
+          test -s models/selfplay/best.npz
+          test -s models/selfplay/training.csv
+          echo "Recovered checkpoint files:"
+          ls -lh models/selfplay/latest.npz models/selfplay/best.npz models/selfplay/training.csv
 
       - name: Train or resume in a runner-safe chunk
         shell: bash
