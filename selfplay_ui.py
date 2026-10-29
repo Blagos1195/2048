@@ -154,7 +154,6 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
     pygame.init()
     screen = pygame.display.set_mode((520, 700), pygame.RESIZABLE)
     pygame.display.set_caption("2048")
-    pygame.display.set_minimum_size((360, 480))
     clock = pygame.time.Clock()
     game = Game2048(seed)
     auto = mode == 3
@@ -162,6 +161,7 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
     running = True
     best_score = 0
     last_action = "Ready"
+    stats_visible = False
     move_plan = {"board": None, "action": None, "busy": False}
     plan_lock = threading.Lock()
     plan_version = {"value": 0}
@@ -239,7 +239,10 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                     last_action = "Ready"
                     schedule_plan()
                 elif info_rect.collidepoint(event.pos):
-                    auto = not auto
+                    if mode == 3:
+                        auto = not auto
+                    else:
+                        stats_visible = not stats_visible
             elif event.type == pygame.KEYDOWN:
                 if event.key in (pygame.K_ESCAPE, pygame.K_q):
                     running = False
@@ -313,6 +316,18 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
         hint = footer_text if mode == 3 else ("Press any key to move" if not game_over else "Start a new game to play again")
         hint_surface = tiny.render(hint + "   |   R: restart   Esc: quit", True, TEXT)
         screen.blit(hint_surface, hint_surface.get_rect(center=(width // 2, height - 12)))
+
+        if stats_visible and mode == 4 and not game_over:
+            panel_w = min(width - 32, 300)
+            panel_h = 150
+            panel = pygame.Rect((width - panel_w) // 2, (height - panel_h) // 2, panel_w, panel_h)
+            pygame.draw.rect(screen, (250, 248, 239), panel, border_radius=10)
+            heading = score_font.render("AI GAME STATS", True, TEXT)
+            screen.blit(heading, heading.get_rect(center=(panel.centerx, panel.y + 24)))
+            for i, line in enumerate((f"Search depth: {depth}", f"Moves played: {game.moves}",
+                                      f"Current score: {game.score:,}", f"Largest tile: {game.max_tile:,}")):
+                surf = small.render(line, True, TEXT)
+                screen.blit(surf, surf.get_rect(center=(panel.centerx, panel.y + 52 + i * 22)))
 
         if game_over:
             overlay = pygame.Surface((width, height), pygame.SRCALPHA)
