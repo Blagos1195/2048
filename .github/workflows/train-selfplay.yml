@@ -41,6 +41,14 @@ jobs:
         shell: bash
         run: |
           mkdir -p models/selfplay
+          # Reuse the already-running integration-branch training result if it
+          # finished before this main-branch job starts.
+          if [ ! -f models/selfplay/latest.npz ]; then
+            git fetch origin main-selfplay-integration || true
+            if git cat-file -e origin/main-selfplay-integration:models/selfplay/latest.npz 2>/dev/null; then
+              git checkout origin/main-selfplay-integration -- models/selfplay/latest.npz models/selfplay/best.npz models/selfplay/training.csv
+            fi
+          fi
           if [ -f models/selfplay/latest.npz ]; then
             echo "Resuming from the latest committed checkpoint"
             python selfplay_ai.py train --games 45000 --depth 1 --eval-every 2500 --eval-games 20 --eval-depth 1 --log-every 100 --out models/selfplay --resume models/selfplay/latest.npz --resume-metrics
