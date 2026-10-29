@@ -16,7 +16,7 @@ from pathlib import Path
 import numpy as np
 import pygame
 
-from selfplay_ai import ACTIONS, ExpectimaxAgent, Game2048, NTupleValue, can_move
+from selfplay_ai import ACTIONS, ExpectimaxAgent, Game2048, NTupleValue, can_move, legal_actions
 
 BG = (250, 248, 239)
 PANEL = (187, 173, 160)
@@ -266,8 +266,7 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
             move_plan["busy"] = False
 
     def legal_actions_safe(board):
-        # Import-free local guard: only accept a known legal action for this board.
-        from selfplay_ai import legal_actions
+        # Only accept a known legal action for the exact current board.
         return legal_actions(board)
 
     def record_game():
@@ -288,6 +287,7 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
     def restart():
         nonlocal game, game_over, last_action, current_game_recorded
         record_game()
+        cancel_plan()
         game = Game2048(seed + int(time.time() * 1000) % 1000000)
         game_over = False
         current_game_recorded = False
@@ -333,7 +333,6 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                     record_game()
                     best_score = max(best_score, game.score)
                     cancel_plan()
-                    cancel_plan()
                     game = Game2048(seed + int(time.time() * 1000) % 1000000)
                     game_over = False
                     current_game_recorded = False
@@ -350,6 +349,7 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                 elif event.key == pygame.K_r:
                     record_game()
                     best_score = max(best_score, game.score)
+                    cancel_plan()
                     game = Game2048(seed + int(time.time() * 1000) % 1000000)
                     game_over = False
                     current_game_recorded = False
