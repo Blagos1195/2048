@@ -87,71 +87,61 @@ def train_view(mode: int, games_target: int, depth: int, out: str, seed: int):
     speed = 1 if mode == 2 else 4
     print("[Training view] Esc closes the view; checkpoints save periodically.")
 
-try:
-        while running and episode < games_target:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
-                    running = False
-                elif event.type == pygame.VIDEORESIZE:
-                    screen = pygame.display.set_mode((max(640, event.w), max(480, event.h)), pygame.RESIZABLE)
-    
-            for _ in range(speed):
-                for i, game in enumerate(games):
-                    if episode >= games_target:
-                        break
-                    agent.epsilon = max(0.02, 0.08 * (0.9999 ** episode))
-                    if not can_move(game.board):
-                        episode += 1
-                        episode_scores.append(game.score)
-                        if episode % 100 == 0:
-                            avg = float(np.mean(episode_scores[-100:]))
-                            print(f"episode {episode}/{games_target} | recent average score {avg:.1f} | "
-                                  f"max tile {max(g.max_tile for g in games)} | TD updates {evaluator.updates:,}")
-                        games[i] = Game2048(seed + episode * 7 + i)
-                        continue
-                    state = game.board.copy()
-                    action = agent.choose_action(state)
-                    moved, reward, terminal = game.step(action)
-                    if moved:
-                        evaluator.update(state, reward / 128.0, game.board.copy(), terminal)
-                    elif not can_move(game.board):
-                        episode += 1
-                        episode_scores.append(game.score)
-                        games[i] = Game2048(seed + episode * 7 + i)
-    
-            now = time.monotonic()
-            if now - last_save >= 20:
-                evaluator.save(out_path / "latest.npz", {"episodes": episode, "updates": evaluator.updates})
-                last_save = now
-    
-            screen.fill(BG)
-            header = font.render(
-                f"SELF-LEARNING TRAINING | Episodes {episode:,}/{games_target:,} | TD updates {evaluator.updates:,}",
-                True, TEXT)
-            screen.blit(header, (20, 15))
-            width, height = screen.get_size()
-            margin, top = 20, 55
-            board_w = (width - margin * 3) // 2
-            board_h = min(board_w, (height - top - 60 - margin * 3) // 2)
-            for i, game in enumerate(games):
-                x = margin + (i % 2) * (board_w + margin)
-                y = top + (i // 2) * (board_h + margin + 25)
-                label = small.render(f"Game {i+1} | Score {game.score:,} | Max tile {game.max_tile}", True, TEXT)
-                screen.blit(label, (x, y))
-                draw_board(screen, game.board, (x, y + 22, board_w, board_h), font)
-            footer = small.render("Esc: close | Models save to " + str(out_path), True, TEXT)
-            screen.blit(footer, (20, height - 28))
-            pygame.display.flip()
-            clock.tick(30 if mode == 1 else 12)
-    
-        evaluator.save(out_path / "latest.npz", {"episodes": episode, "updates": evaluator.updates})
-finally:
-    try:
-        evaluator.save(out_path / "latest.npz", {"episodes": episode, "updates": evaluator.updates})
-    except Exception as exc:
-        print(f"[Training view] Could not save final checkpoint: {exc}")
-    pygame.quit()
+    while running and episode < games_target:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
+                running = False
 
+        for _ in range(speed):
+            for i, game in enumerate(games):
+                if episode >= games_target:
+                    break
+                agent.epsilon = max(0.02, 0.08 * (0.9999 ** episode))
+                if not can_move(game.board):
+                    episode += 1
+                    episode_scores.append(game.score)
+                    if episode % 100 == 0:
+                        avg = float(np.mean(episode_scores[-100:]))
+                        print(f"episode {episode}/{games_target} | recent average score {avg:.1f} | "
+                              f"max tile {max(g.max_tile for g in games)} | TD updates {evaluator.updates:,}")
+                    games[i] = Game2048(seed + episode * 7 + i)
+                    continue
+                state = game.board.copy()
+                action = agent.choose_action(state)
+                moved, reward, terminal = game.step(action)
+                if moved:
+                    evaluator.update(state, reward / 128.0, game.board.copy(), terminal)
+                elif not can_move(game.board):
+                    episode += 1
+                    episode_scores.append(game.score)
+                    games[i] = Game2048(seed + episode * 7 + i)
+
+        now = time.monotonic()
+        if now - last_save >= 20:
+            evaluator.save(out_path / "latest.npz", {"episodes": episode, "updates": evaluator.updates})
+            last_save = now
+
+        screen.fill(BG)
+        header = font.render(
+            f"SELF-LEARNING TRAINING | Episodes {episode:,}/{games_target:,} | TD updates {evaluator.updates:,}",
+            True, TEXT)
+        screen.blit(header, (20, 15))
+        width, height = screen.get_size()
+        margin, top = 20, 55
+        board_w = (width - margin * 3) // 2
+        board_h = min(board_w, (height - top - 60 - margin * 3) // 2)
+        for i, game in enumerate(games):
+            x = margin + (i % 2) * (board_w + margin)
+            y = top + (i // 2) * (board_h + margin + 25)
+            label = small.render(f"Game {i+1} | Score {game.score:,} | Max tile {game.max_tile}", True, TEXT)
+            screen.blit(label, (x, y))
+            draw_board(screen, game.board, (x, y + 22, board_w, board_h), font)
+        footer = small.render("Esc: close | Models save to " + str(out_path), True, TEXT)
+        screen.blit(footer, (20, height - 28))
+        pygame.display.flip()
+        clock.tick(30 if mode == 1 else 12)
+
+    evaluator.save(out_path / "latest.npz", {"episodes": episode, "updates": evaluator.updates})
     pygame.quit()
 
 
@@ -164,6 +154,7 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
     pygame.init()
     screen = pygame.display.set_mode((520, 700), pygame.RESIZABLE)
     pygame.display.set_caption("2048")
+    pygame.display.set_minimum_size((360, 480))
     clock = pygame.time.Clock()
     game = Game2048(seed)
     auto = mode == 3
@@ -171,7 +162,6 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
     running = True
     best_score = 0
     last_action = "Ready"
-    stats_visible = False
     move_plan = {"board": None, "action": None, "busy": False}
     plan_lock = threading.Lock()
     plan_version = {"value": 0}
@@ -222,150 +212,132 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
         text = button_font.render(label, True, (255, 255, 255))
         screen.blit(text, text.get_rect(center=rect.center))
 
-try:
-        schedule_plan()
-        while running:
-            width, height = screen.get_size()
-            margin = max(12, min(22, width // 24))
-            header_h = 92
-            footer_h = 48
-            button_h = 38
-            gap = 10
-            board_size = max(180, min(width - margin * 2, height - header_h - footer_h - button_h - gap * 3))
-            board_x = (width - board_size) // 2
-            board_y = header_h + 12
-            new_rect = pygame.Rect(margin, height - footer_h - button_h - 4, (width - margin * 2 - gap) // 2, button_h)
-            info_rect = pygame.Rect(new_rect.right + gap, new_rect.y, new_rect.width, button_h)
-    
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    running = False
-                elif event.type == pygame.VIDEORESIZE:
-                    screen = pygame.display.set_mode((max(360, event.w), max(480, event.h)), pygame.RESIZABLE)
-                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    if new_rect.collidepoint(event.pos):
-                        best_score = max(best_score, game.score)
-                        game = Game2048(seed + int(time.time() * 1000) % 1000000)
-                        game_over = False
-                        last_action = "Ready"
-                        schedule_plan()
-                    elif info_rect.collidepoint(event.pos):
-                        if mode == 3:
-                            auto = not auto
-                        else:
-                            stats_visible = not stats_visible
-                elif event.type == pygame.KEYDOWN:
-                    if event.key in (pygame.K_ESCAPE, pygame.K_q):
-                        running = False
-                    elif event.key == pygame.K_r:
-                        best_score = max(best_score, game.score)
-                        game = Game2048(seed + int(time.time() * 1000) % 1000000)
-                        game_over = False
-                        last_action = "Ready"
-                        schedule_plan()
-                    elif not game_over:
-                        if mode == 3:
-                            auto = not auto
-                        else:
-                            # LARP: any ordinary key advances one AI-selected move.
-                            with plan_lock:
-                                planned_board = move_plan["board"]
-                                planned_action = move_plan["action"]
-                            if planned_board == game.board.tobytes() and planned_action is not None:
-                                action = planned_action
-                            else:
-                                # A rare cold-start fallback; normal play uses the prepared action.
-                                action = agent.choose_action(game.board.copy())
-                            moved, _, terminal = game.step(action)
-                            last_action = ACTION_NAMES[action] if moved else "No move"
-                            best_score = max(best_score, game.score)
-                            game_over = terminal or not can_move(game.board)
-                            if not game_over:
-                                schedule_plan()
-    
-            if auto and not game_over:
-                with plan_lock:
-                    planned_board = move_plan["board"]
-                    planned_action = move_plan["action"]
-                if planned_board == game.board.tobytes() and planned_action is not None:
-                    moved, _, terminal = game.step(planned_action)
-                    last_action = ACTION_NAMES[planned_action] if moved else "No move"
+    schedule_plan()
+    while running:
+        width, height = screen.get_size()
+        margin = max(12, min(22, width // 24))
+        header_h = 92
+        footer_h = 48
+        button_h = 38
+        gap = 10
+        board_size = max(180, min(width - margin * 2, height - header_h - footer_h - button_h - gap * 3))
+        board_x = (width - board_size) // 2
+        board_y = header_h + 12
+        new_rect = pygame.Rect(margin, height - footer_h - button_h - 4, (width - margin * 2 - gap) // 2, button_h)
+        info_rect = pygame.Rect(new_rect.right + gap, new_rect.y, new_rect.width, button_h)
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            elif event.type == pygame.VIDEORESIZE:
+                screen = pygame.display.set_mode((max(360, event.w), max(480, event.h)), pygame.RESIZABLE)
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if new_rect.collidepoint(event.pos):
                     best_score = max(best_score, game.score)
-                    game_over = terminal or not can_move(game.board)
-                    if not game_over:
-                        schedule_plan()
-    
-            screen.fill(BG)
-            # Familiar 2048 header and compact score cards.
-            screen.blit(title_font.render("2048", True, TEXT), (margin, 14))
-            score_w = max(82, (width - margin * 2 - 8) // 2)
-            score_x = width - margin - score_w * 2 - 8
-            for i, (label, value) in enumerate((("SCORE", game.score), ("BEST", max(best_score, game.score)))):
-                rect = pygame.Rect(score_x + i * (score_w + 8), 12, score_w, 54)
-                pygame.draw.rect(screen, PANEL, rect, border_radius=5)
-                screen.blit(tiny.render(label, True, (238, 228, 218)),
-                            tiny.render(label, True, (238, 228, 218)).get_rect(center=(rect.centerx, rect.y + 13)))
-                value_text = score_font.render(f"{value:,}", True, (255, 255, 255))
-                screen.blit(value_text, value_text.get_rect(center=(rect.centerx, rect.y + 36)))
-    
-            width, height = screen.get_size()
-            board_size = max(180, min(width - margin * 2, height - header_h - footer_h - button_h - gap * 3))
-            board_x = (width - board_size) // 2
-            board_y = max(header_h, (height - board_size - footer_h - button_h - gap) // 2)
-            draw_board(screen, game.board, (board_x, board_y, board_size, board_size), title_font)
-    
-            stats_y = min(height - footer_h - button_h - 18, board_y + board_size + 8)
-            stats = f"Moves {game.moves}   |   Largest tile {game.max_tile:,}"
-            stat_surface = small.render(stats, True, TEXT)
-            screen.blit(stat_surface, stat_surface.get_rect(center=(width // 2, stats_y)))
-    
-            new_rect = pygame.Rect(margin, height - footer_h - button_h - 4, (width - margin * 2 - gap) // 2, button_h)
-            info_rect = pygame.Rect(new_rect.right + gap, new_rect.y, new_rect.width, button_h)
-            draw_button(new_rect, "New Game")
-            draw_button(info_rect, "Pause AI" if auto else ("Resume AI" if mode == 3 else "AI Stats"))
-            footer_text = ("AI thinking..." if move_plan["busy"] else "AI ready") if not game_over else "Game over"
-            hint = footer_text if mode == 3 else ("Press any key to move" if not game_over else "Start a new game to play again")
-            hint_surface = tiny.render(hint + "   |   R: restart   Esc: quit", True, TEXT)
-            screen.blit(hint_surface, hint_surface.get_rect(center=(width // 2, height - 12)))
-    
-            if stats_visible and mode == 4 and not game_over:
-                panel_w = min(width - 32, 300)
-                panel_h = 150
-                panel = pygame.Rect((width - panel_w) // 2, (height - panel_h) // 2, panel_w, panel_h)
-                pygame.draw.rect(screen, (250, 248, 239), panel, border_radius=10)
-                heading = score_font.render("AI GAME STATS", True, TEXT)
-                screen.blit(heading, heading.get_rect(center=(panel.centerx, panel.y + 24)))
-                for i, line in enumerate((f"Search depth: {depth}", f"Moves played: {game.moves}",
-                                          f"Current score: {game.score:,}", f"Largest tile: {game.max_tile:,}")):
-                    surf = small.render(line, True, TEXT)
-                    screen.blit(surf, surf.get_rect(center=(panel.centerx, panel.y + 52 + i * 22)))
-    
-            if game_over:
-                overlay = pygame.Surface((width, height), pygame.SRCALPHA)
-                overlay.fill((40, 35, 30, 155))
-                screen.blit(overlay, (0, 0))
-                panel_w = min(width - 32, 330)
-                panel_h = min(height - 40, 300)
-                panel = pygame.Rect((width - panel_w) // 2, (height - panel_h) // 2, panel_w, panel_h)
-                pygame.draw.rect(screen, (250, 248, 239), panel, border_radius=10)
-                heading = title_font.render("Game over!", True, TEXT)
-                screen.blit(heading, heading.get_rect(center=(panel.centerx, panel.y + 38)))
-                lines = [
-                    f"Final score: {game.score:,}",
-                    f"Best score: {max(best_score, game.score):,}",
-                    f"Largest tile: {game.max_tile:,}",
-                    f"Moves played: {game.moves:,}",
-                ]
-                for i, line in enumerate(lines):
-                    surf = small.render(line, True, TEXT)
-                    screen.blit(surf, surf.get_rect(center=(panel.centerx, panel.y + 88 + i * 27)))
-                hint = small.render("Choose New Game to play again", True, TEXT)
-                screen.blit(hint, hint.get_rect(center=(panel.centerx, panel.bottom - 24)))
-    
-            pygame.display.flip()
-            clock.tick(30 if mode == 3 else 60)
-finally:
-    pygame.quit()
+                    game = Game2048(seed + int(time.time() * 1000) % 1000000)
+                    game_over = False
+                    last_action = "Ready"
+                    schedule_plan()
+                elif info_rect.collidepoint(event.pos):
+                    auto = not auto
+            elif event.type == pygame.KEYDOWN:
+                if event.key in (pygame.K_ESCAPE, pygame.K_q):
+                    running = False
+                elif event.key == pygame.K_r:
+                    best_score = max(best_score, game.score)
+                    game = Game2048(seed + int(time.time() * 1000) % 1000000)
+                    game_over = False
+                    last_action = "Ready"
+                    schedule_plan()
+                elif not game_over:
+                    if mode == 3:
+                        auto = not auto
+                    else:
+                        # LARP: any ordinary key advances one AI-selected move.
+                        with plan_lock:
+                            planned_board = move_plan["board"]
+                            planned_action = move_plan["action"]
+                        if planned_board == game.board.tobytes() and planned_action is not None:
+                            action = planned_action
+                        else:
+                            # A rare cold-start fallback; normal play uses the prepared action.
+                            action = agent.choose_action(game.board.copy())
+                        moved, _, terminal = game.step(action)
+                        last_action = ACTION_NAMES[action] if moved else "No move"
+                        best_score = max(best_score, game.score)
+                        game_over = terminal or not can_move(game.board)
+                        if not game_over:
+                            schedule_plan()
+
+        if auto and not game_over:
+            with plan_lock:
+                planned_board = move_plan["board"]
+                planned_action = move_plan["action"]
+            if planned_board == game.board.tobytes() and planned_action is not None:
+                moved, _, terminal = game.step(planned_action)
+                last_action = ACTION_NAMES[planned_action] if moved else "No move"
+                best_score = max(best_score, game.score)
+                game_over = terminal or not can_move(game.board)
+                if not game_over:
+                    schedule_plan()
+
+        screen.fill(BG)
+        # Familiar 2048 header and compact score cards.
+        screen.blit(title_font.render("2048", True, TEXT), (margin, 14))
+        score_w = max(82, (width - margin * 2 - 8) // 2)
+        score_x = width - margin - score_w * 2 - 8
+        for i, (label, value) in enumerate((("SCORE", game.score), ("BEST", max(best_score, game.score)))):
+            rect = pygame.Rect(score_x + i * (score_w + 8), 12, score_w, 54)
+            pygame.draw.rect(screen, PANEL, rect, border_radius=5)
+            screen.blit(tiny.render(label, True, (238, 228, 218)),
+                        tiny.render(label, True, (238, 228, 218)).get_rect(center=(rect.centerx, rect.y + 13)))
+            value_text = score_font.render(f"{value:,}", True, (255, 255, 255))
+            screen.blit(value_text, value_text.get_rect(center=(rect.centerx, rect.y + 36)))
+
+        width, height = screen.get_size()
+        board_size = max(180, min(width - margin * 2, height - header_h - footer_h - button_h - gap * 3))
+        board_x = (width - board_size) // 2
+        board_y = max(header_h, (height - board_size - footer_h - button_h - gap) // 2)
+        draw_board(screen, game.board, (board_x, board_y, board_size, board_size), title_font)
+
+        stats_y = min(height - footer_h - button_h - 18, board_y + board_size + 8)
+        stats = f"Moves {game.moves}   |   Largest tile {game.max_tile:,}"
+        stat_surface = small.render(stats, True, TEXT)
+        screen.blit(stat_surface, stat_surface.get_rect(center=(width // 2, stats_y)))
+
+        new_rect = pygame.Rect(margin, height - footer_h - button_h - 4, (width - margin * 2 - gap) // 2, button_h)
+        info_rect = pygame.Rect(new_rect.right + gap, new_rect.y, new_rect.width, button_h)
+        draw_button(new_rect, "New Game")
+        draw_button(info_rect, "Pause AI" if auto else ("Resume AI" if mode == 3 else "AI Stats"))
+        footer_text = ("AI thinking..." if move_plan["busy"] else "AI ready") if not game_over else "Game over"
+        hint = footer_text if mode == 3 else ("Press any key to move" if not game_over else "Start a new game to play again")
+        hint_surface = tiny.render(hint + "   |   R: restart   Esc: quit", True, TEXT)
+        screen.blit(hint_surface, hint_surface.get_rect(center=(width // 2, height - 12)))
+
+        if game_over:
+            overlay = pygame.Surface((width, height), pygame.SRCALPHA)
+            overlay.fill((40, 35, 30, 155))
+            screen.blit(overlay, (0, 0))
+            panel_w = min(width - 32, 330)
+            panel_h = min(height - 40, 300)
+            panel = pygame.Rect((width - panel_w) // 2, (height - panel_h) // 2, panel_w, panel_h)
+            pygame.draw.rect(screen, (250, 248, 239), panel, border_radius=10)
+            heading = title_font.render("Game over!", True, TEXT)
+            screen.blit(heading, heading.get_rect(center=(panel.centerx, panel.y + 38)))
+            lines = [
+                f"Final score: {game.score:,}",
+                f"Best score: {max(best_score, game.score):,}",
+                f"Largest tile: {game.max_tile:,}",
+                f"Moves played: {game.moves:,}",
+            ]
+            for i, line in enumerate(lines):
+                surf = small.render(line, True, TEXT)
+                screen.blit(surf, surf.get_rect(center=(panel.centerx, panel.y + 88 + i * 27)))
+            hint = small.render("Choose New Game to play again", True, TEXT)
+            screen.blit(hint, hint.get_rect(center=(panel.centerx, panel.bottom - 24)))
+
+        pygame.display.flip()
+        clock.tick(30 if mode == 3 else 60)
 
     pygame.quit()
 
@@ -386,4 +358,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n[View] Keyboard interrupt received. Closing cleanly...")
+    finally:
+        if pygame.get_init():
+            pygame.quit()
