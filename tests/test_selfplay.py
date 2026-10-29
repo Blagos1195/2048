@@ -90,3 +90,36 @@ def test_expected_spawn_value_matches_explicit_enumeration():
             child[r, c] = tile
             expected += probability * evaluator.value(child) / len(empty)
     assert evaluator.expected_spawn_value(board) == pytest.approx(expected, abs=1e-6)
+
+
+
+def test_expectimax_cache_reuses_identical_chance_states():
+    evaluator = NTupleValue(seed=11)
+    agent = ExpectimaxAgent(evaluator, depth=1, seed=11)
+    board = Game2048(11).board
+    first = agent._chance(board.copy(), 0)
+    nodes = agent.nodes
+    second = agent._chance(board.copy(), 0)
+    assert first == pytest.approx(second)
+    assert agent.nodes == nodes
+
+
+def test_local_parallel_collection_has_transition_data():
+    from selfplay_ai import _collect_episode_local, _apply_collected_episode
+
+    evaluator = NTupleValue(seed=13)
+    episode = _collect_episode_local(evaluator, seed=13, epsilon=0.1, depth=1)
+    assert episode["moves"] > 0
+    assert len(episode["transitions"]) == episode["moves"]
+    td_mean = _apply_collected_episode(evaluator, episode["transitions"])
+    assert np.isfinite(td_mean)
+    assert evaluator.updates == episode["moves"]
+
+
+def test_training_parser_exposes_worker_and_benchmark_options():
+    from selfplay_ai import build_parser
+
+    args = build_parser().parse_args(["train", "--games", "2", "--workers", "2"])
+    assert args.workers == 2
+    bench = build_parser().parse_args(["benchmark", "--model", "model.npz", "--games", "3", "--depths", "1", "2"])
+    assert bench.depths == [1, 2]
