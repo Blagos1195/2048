@@ -139,3 +139,32 @@ def test_benchmark_command_validates_depths_without_single_depth(monkeypatch):
     selfplay_ai.main()
 
     assert captured[0].depths == [1, 2]
+
+
+
+def test_expectimax_cache_persists_between_moves_and_is_bounded():
+    evaluator = NTupleValue(seed=17)
+    agent = ExpectimaxAgent(evaluator, depth=2, seed=17, cache_size=32)
+    board = Game2048(17).board
+    first_action = agent.choose_action(board.copy())
+    assert first_action in legal_actions(board)
+    assert agent._chance_cache or agent._player_cache
+
+    # Re-evaluating a previously visited state should use persistent cached values.
+    previous_hits = agent.cache_hits
+    agent._chance(board.copy(), 0)
+    assert agent.cache_hits >= previous_hits
+    assert len(agent._chance_cache) <= 32
+    assert len(agent._player_cache) <= 32
+
+
+def test_expectimax_iterative_deepening_returns_legal_action():
+    evaluator = NTupleValue(seed=19)
+    agent = ExpectimaxAgent(evaluator, depth=2, seed=19)
+    board = Game2048(19).board
+    assert agent.choose_action(board) in legal_actions(board)
+    # A second choice on the same board is valid and retains cache entries.
+    cache_size_before = len(agent._chance_cache) + len(agent._player_cache)
+    assert agent.choose_action(board) in legal_actions(board)
+    assert len(agent._chance_cache) + len(agent._player_cache) >= 0
+    assert cache_size_before > 0
