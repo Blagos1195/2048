@@ -1,76 +1,66 @@
-# 2048 DQN Lab
+# Self-learning 2048 AI
 
-A NumPy-based Double-DQN learner for 2048. The agent starts from fresh random weights and discovers strategy from experience. There are **no hard-coded corner bonuses, snake-pattern bonuses, opening scripts, or preferred-move rules**.
+This repository's main agent is a **self-learning n-tuple temporal-difference (TD) learner** guided by Expectimax search. It starts with zero learned value weights and improves from real game transitions. The old DQN implementation, its incompatible checkpoints, generated Python caches, and unused UI files have been removed so there is one main learning system rather than two competing ones.
 
-## Install and run
+## Install
 
 Python 3.10+ is recommended.
 
 ```bash
 python -m pip install -r requirements.txt
-python main.py
-```
-
-The default `RUN_MODE = 0` trains headlessly. Press Enter in the terminal to open the live showcase/replay menu. Change `RUN_MODE` at the top of `main.py` to use the existing modes:
-
-- `0`: headless training and terminal-triggered showcase/replay
-- `1`: multi-board live dashboard
-- `2`: slower multi-board live dashboard
-- `3`: single-game showcase
-- `4`: LARP mode, where the model pilots moves while the interface lets you take the credit
-
-In graphical training modes, `SPACE` opens the live showcase, `R` opens the best saved replay, and `S` saves a checkpoint. Replay controls are Space to pause, left/right arrows to step, up/down arrows to change speed, and Escape to close.
-
-## Learning design
-
-- **Two interchangeable state encodings:** `STATE_ENCODING = "log"` uses 16 logarithmically scaled values; `"tile_planes"` uses 17 one-hot tile categories for each cell (272 inputs). Every board position is treated identically by either encoding.
-- **Double DQN:** online network chooses the next action, target network evaluates it, with legal-action masking.
-- **Prioritized replay:** fixed-size NumPy arrays avoid rebuilding a Python list on every batch. High-TD-error experiences are sampled more often, with importance-sampling weights.
-- **Three-step returns:** reward information can propagate backwards through multiple moves. Terminal episodes flush pending transitions correctly.
-- **Stability:** Adam, gradient clipping, a target network and bounded epsilon-greedy exploration.
-- **Neutral reward:** actual merge score divided by `REWARD_SCALE`, plus `SURVIVAL_REWARD` per move and `TERMINAL_PENALTY` at game over. No board-shape rewards are used.
-- **Evaluation:** quick 4-game checks every 10 episodes, 50-game fixed-seed validation every 100 episodes, and a 100-game unseen-seed final evaluation at shutdown. Evaluation does not train the agent. A random legal-move baseline is recorded at startup.
-- **Metrics:** `training_metrics.csv` records training episodes, evaluation scores, tile milestones, epsilon, replay size, TD error and update counts.
-- **Checkpoints:** the latest checkpoint includes weights, target weights, Adam state, replay priorities and data, n-step queue, RNG state and exploration progress. The best evaluated model is kept separately.
-
-## Experiments without accidental mixing
-
-Each run writes to `models/<EXPERIMENT_NAME>/`. Keep a unique `EXPERIMENT_NAME` for each experiment and do not reuse a previous checkpoint when comparing configurations.
-
-Recommended comparisons:
-
-1. `STATE_ENCODING = "log"`, `REWARD_SCALE = 128.0`, `EXPERIMENT_NAME = "log_reward128"`.
-2. `STATE_ENCODING = "tile_planes"`, `REWARD_SCALE = 128.0`, `EXPERIMENT_NAME = "planes_reward128"`.
-3. Repeat the better encoding with `REWARD_SCALE = 256.0` and a new experiment name.
-4. If needed, test a different `SURVIVAL_REWARD` or `TERMINAL_PENALTY` separately, changing only one value per experiment.
-
-Use the same `RANDOM_SEED` for comparable runs when reproducibility matters. Do not compare only the best single game; compare 50-game validation and the final held-out test results. Changing reward scaling changes the learning problem, so a higher training reward alone does not mean better play.
-
-## Tests
-
-```bash
 python -m pytest -q
 ```
 
-The tests cover board rules, action masks, position-neutral encodings, prioritized replay, multi-step returns, weight updates and checkpoint restoration. Training is stochastic: more visible activity is not a guarantee of mastery, and late-game strategy requires sustained evaluation rather than one fortunate run.
+## Run the AI
 
-## Symmetry-augmented experiment (v2)
+Headless training is the default:
 
-The current `main.py` defaults to `STATE_ENCODING = "tile_planes"` and
-`EXPERIMENT_NAME = "tile_planes_symmetry_v2"`. It starts a separate experiment
-folder so it cannot overwrite or accidentally resume the earlier run. The DQN
-randomly rotates and reflects replay transitions during learning, while remapping
-actions and legal-action masks consistently. This uses only the mathematical
-symmetries of the game; it does not reward corners or prescribe a strategy.
-Exploration decays over 400,000 environment moves rather than 120,000.
+```bash
+python main.py
+```
 
-The previous `models/log_reward128` checkpoint and CSV should be kept for
-comparison. Evaluate the new run against the same fixed evaluation seeds and
-compare average score, average maximum tile, and 2048 success rate.
+This trains for 100,000 games by default and saves checkpoints and a CSV training log under `models/selfplay/`. To run a shorter test:
 
+```bash
+python main.py --games 100
+```
 
-## New standalone self-learning AI
+The training/evaluation CLI is also available directly:
 
-The new from-scratch self-learning agent is documented in [README_SELFPLAY.md](README_SELFPLAY.md). It uses a learned n-tuple temporal-difference value function with Expectimax search and self-play. It does not require the existing DQN, pygame, PyTorch, a pretrained checkpoint, or a paid service.
+```bash
+python selfplay_ai.py train --games 100000
+python selfplay_ai.py evaluate --model models/selfplay/best.npz --games 100 --depth 2
+python selfplay_ai.py train --resume models/selfplay/latest.npz --games 100000 --out models/selfplay
+```
 
-Install and test it with `python -m pip install -r requirements-selfplay.txt` and `python -m pytest -q tests/test_selfplay.py`. Start training with `python selfplay_ai.py train`. The default run writes learned checkpoints and metrics to `models/selfplay/`; see the standalone guide for evaluation and resume commands.
+## View modes
+
+All four graphical modes use the new learned-value agent. They can be launched from `main.py`:
+
+- `python main.py --mode 1 --games 10000`: four-board live training dashboard, faster animation.
+- `python main.py --mode 2 --games 10000`: four-board live training dashboard, slower animation.
+- `python main.py --mode 3`: watch the saved AI play automatically.
+- `python main.py --mode 4`: **LARP mode**. Press any key to let the AI make one move while you receive the credit. Press `R` to restart and `Esc` to quit.
+
+Modes 3 and 4 need a trained checkpoint. Train first, or pass an explicit checkpoint using `--model path/to/model.npz`. The view modes are optional; headless training does not need a display.
+
+## How it learns
+
+- **N-tuple TD learning:** eight overlapping four-cell row/column patterns provide a learned estimate of a board's long-term value. Weights start at zero and update after observed transitions.
+- **Expectimax search:** evaluates legal moves and the random appearance of 2 and 4 tiles, using the learned value function rather than hard-coded board-shape bonuses.
+- **Self-play and exploration:** the agent generates its own games and uses a decaying epsilon rate to try random legal moves while learning.
+- **Evaluation and checkpoints:** periodic evaluation records average score, maximum tiles and 2048/4096/8192 success rates. The latest and best evaluated checkpoints are saved separately.
+
+There are no fixed corner bonuses, snake-pattern bonuses, opening scripts, or preferred-move rules. The search predicts likely consequences, but its decisions are only as good as its learned value estimate and search depth.
+
+## Compute and performance
+
+The learner uses NumPy and runs on CPU; it does not currently use a GPU, distributed workers, or parallel game simulation. Training throughput is the limiting factor on hosted CI runners, so the GitHub workflow trains in resumable chunks instead of relying on a single job that can exceed the runner time limit. More games and deeper search can improve decisions, but also cost more compute. Always compare results across many fixed-seed evaluation games rather than trusting one unusually good run.
+
+## Output files
+
+- `models/selfplay/latest.npz`: latest learned value weights and training metadata.
+- `models/selfplay/best.npz`: strongest model found at a periodic evaluation.
+- `models/selfplay/training.csv`: per-game metrics and periodic evaluation summaries.
+
+The tests cover move/merge rules, terminal detection, deterministic game seeds, pattern indexing, TD updates, legal action selection, and spawn expectation.
