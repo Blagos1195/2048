@@ -2,7 +2,7 @@ name: Self-play AI tests
 
 on:
   push:
-    branches: [self-learning-final]
+    branches: [main, self-learning-final]
   pull_request:
     branches: [main]
 
