@@ -22,13 +22,14 @@ def main():
     parser.add_argument("--out", default="models/selfplay")
     parser.add_argument("--model", default=None)
     parser.add_argument("--resume", default=None)
+    parser.add_argument("--workers", type=int, default=0, help="parallel self-play workers; 0 auto-selects")
     args = parser.parse_args()
 
     if args.mode == 0:
         from selfplay_ai import main as training_main
         sys.argv = ["selfplay_ai.py", "train", "--games", str(args.games),
                     "--depth", str(args.depth), "--seed", str(args.seed),
-                    "--out", args.out]
+                    "--out", args.out, "--workers", str(args.workers)]
         if args.resume:
             sys.argv.extend(["--resume", args.resume])
         training_main()
