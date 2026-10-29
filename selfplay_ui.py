@@ -160,6 +160,8 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
     clock = pygame.time.Clock()
     game = Game2048(seed)
     auto = mode == 3
+    ai_control = mode == 3
+    auto_move = False
     game_over = False
     running = True
     best_score = 0
@@ -341,8 +343,21 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                     schedule_plan()
                 elif mode == 3 and info_rect.collidepoint(event.pos):
                     auto = not auto
-                elif mode == 4 and info_rect.collidepoint(event.pos):
-                    stats_visible = not stats_visible
+                elif mode == 4:
+                    # Tiny, deliberately unobtrusive control hotspots. The visible
+                    # markers are only a few pixels wide; the whole 18px area works.
+                    ai_hotspot = pygame.Rect(width - 44, height - 22, 18, 18)
+                    auto_hotspot = pygame.Rect(width - 23, height - 22, 18, 18)
+                    if ai_hotspot.collidepoint(event.pos):
+                        ai_control = not ai_control
+                        if ai_control:
+                            schedule_plan()
+                    elif auto_hotspot.collidepoint(event.pos):
+                        auto_move = not auto_move
+                        if ai_control and auto_move:
+                            schedule_plan()
+                    elif info_rect.collidepoint(event.pos):
+                        stats_visible = not stats_visible
             elif event.type == pygame.KEYDOWN:
                 if event.key in (pygame.K_ESCAPE, pygame.K_q):
                     running = False
@@ -363,30 +378,57 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                 elif not game_over:
                     if mode == 3:
                         auto = not auto
-                    else:
-                        # LARP: any ordinary key advances one AI-selected move.
-                        with plan_lock:
-                            planned_board = move_plan["board"]
-                            planned_action = move_plan["action"]
-                        # Ignore key repeats while the planner is busy or the
-                        # board has changed. Never run a second search on the UI thread.
-                        now = time.monotonic()
-                        if (not game_over and planned_board == game.board.tobytes()
-                                and planned_action in legal_actions_safe(game.board)
-                                and now - last_move_time >= move_debounce_seconds):
-                            last_move_time = now
-                            moved, _, terminal = game.step(planned_action)
-                            if moved:
-                                last_action = ACTION_NAMES[planned_action]
-                                best_score = max(best_score, game.score)
-                                game_over = terminal or not can_move(game.board)
-                                if game_over:
-                                    cancel_plan()
-                                    record_game()
-                                else:
-                                    schedule_plan()
+                    elif mode == 4:
+                        if event.key == pygame.K_F8 or event.key == pygame.K_BACKQUOTE:
+                            ai_control = not ai_control
+                            if ai_control:
+                                schedule_plan()
+                        elif event.key == pygame.K_F7:
+                            auto_move = not auto_move
+                            if ai_control and auto_move:
+                                schedule_plan()
+                        elif not ai_control:
+                            # Ordinary 2048 controls: arrows or WASD only.
+                            human_actions = {
+                                pygame.K_LEFT: 0, pygame.K_a: 0,
+                                pygame.K_DOWN: 1, pygame.K_s: 1,
+                                pygame.K_RIGHT: 2, pygame.K_d: 2,
+                                pygame.K_UP: 3, pygame.K_w: 3,
+                            }
+                            action = human_actions.get(event.key)
+                            if action is not None:
+                                moved, _, terminal = game.step(action)
+                                if moved:
+                                    last_action = ACTION_NAMES[action]
+                                    best_score = max(best_score, game.score)
+                                    game_over = terminal or not can_move(game.board)
+                                    if game_over:
+                                        cancel_plan()
+                                        record_game()
+                                    else:
+                                        schedule_plan()
+                        elif event.key in (pygame.K_SPACE, pygame.K_RETURN, pygame.K_KP_ENTER) and not auto_move:
+                            # Manual AI mode: only play a prepared move on explicit request.
+                            with plan_lock:
+                                planned_board = move_plan["board"]
+                                planned_action = move_plan["action"]
+                            now = time.monotonic()
+                            if (planned_board == game.board.tobytes()
+                                    and planned_action in legal_actions_safe(game.board)
+                                    and now - last_move_time >= move_debounce_seconds):
+                                last_move_time = now
+                                moved, _, terminal = game.step(planned_action)
+                                if moved:
+                                    last_action = ACTION_NAMES[planned_action]
+                                    best_score = max(best_score, game.score)
+                                    game_over = terminal or not can_move(game.board)
+                                    if game_over:
+                                        cancel_plan()
+                                        record_game()
+                                    else:
+                                        schedule_plan()
 
-        if auto and not game_over:
+        if ((auto and mode == 3) or (ai_control and auto_move and mode == 4)) and not game_over:
             with plan_lock:
                 planned_board = move_plan["board"]
                 planned_action = move_plan["action"]
@@ -433,6 +475,21 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
         if mode == 3:
             hint_surface = tiny.render(footer_text, True, TEXT)
             screen.blit(hint_surface, hint_surface.get_rect(center=(width // 2, height - 12)))
+        elif mode == 4:
+            # Nearly invisible status pixels: left = AI control, middle = auto,
+            # right = a valid move is waiting. Hotspots are larger than the pixels.
+            with plan_lock:
+                ready = (move_plan["board"] == game.board.tobytes()
+                         and move_plan["action"] in legal_actions_safe(game.board))
+                thinking = move_plan["busy"]
+            pixel_y = height - 8
+            pygame.draw.circle(screen, (130, 122, 113) if ai_control else (221, 213, 202),
+                               (width - 35, pixel_y), 2)
+            pygame.draw.circle(screen, (130, 122, 113) if auto_move else (221, 213, 202),
+                               (width - 14, pixel_y), 2)
+            ready_color = (110, 155, 105) if ready and not auto_move else (
+                (180, 170, 155) if thinking else (221, 213, 202))
+            pygame.draw.circle(screen, ready_color, (width - 24, pixel_y), 2)
 
         if stats_visible and mode == 4:
             panel_w = min(width - 32, 320)
