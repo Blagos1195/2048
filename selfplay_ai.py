@@ -256,7 +256,7 @@ class ExpectimaxAgent:
         empty = np.argwhere(board == 0)
         if len(empty) == 0:
             result = self.evaluator.value(board) if can_move(board) else -2.0
-            self._chance_cache[key] = result
+            self._cache_set(self._chance_cache, key, result)
             return result
         total = 0.0
         for r, c in empty:
