@@ -16,10 +16,10 @@ python -m pytest -q
 Headless training is the default:
 
 ```bash
-python main.py
+python main.py --workers 0
 ```
 
-This trains for 100,000 games by default and saves checkpoints and a CSV training log under `models/selfplay/`. To run a shorter test:
+This trains for 100,000 games by default and saves checkpoints and a CSV training log under `models/selfplay/`. Parallel self-play is enabled automatically (up to four workers); pass `--workers 1` for sequential training or `--workers 3` to select three workers explicitly. To run a shorter test:
 
 ```bash
 python main.py --games 100
@@ -30,6 +30,7 @@ The training/evaluation CLI is also available directly:
 ```bash
 python selfplay_ai.py train --games 100000
 python selfplay_ai.py evaluate --model models/selfplay/best.npz --games 100 --depth 2
+python selfplay_ai.py benchmark --model models/selfplay/best.npz --games 20 --depths 1 2 --seed 4000000
 python selfplay_ai.py train --resume models/selfplay/latest.npz --games 100000 --out models/selfplay
 ```
 
@@ -55,7 +56,7 @@ There are no fixed corner bonuses, snake-pattern bonuses, opening scripts, or pr
 
 ## Compute and performance
 
-The learner uses NumPy and runs on CPU; it does not currently use a GPU, distributed workers, or parallel game simulation. Training throughput is the limiting factor on hosted CI runners, so the GitHub workflow trains in resumable chunks instead of relying on a single job that can exceed the runner time limit. More games and deeper search can improve decisions, but also cost more compute. Always compare results across many fixed-seed evaluation games rather than trusting one unusually good run.
+The learner uses NumPy on CPU and now collects self-play games in parallel worker processes. Workers share a read-only snapshot of the value weights; the parent applies TD updates in a deterministic episode order between batches. This keeps writes to the learned weights safe while using multiple CPU cores. Expectimax caches repeated board/depth states during each move. There is no GPU acceleration yet because this small n-tuple evaluator and branch-heavy search are CPU-oriented; a GPU port would need benchmarking to justify the transfer and implementation costs. The GitHub workflow trains in resumable chunks and benchmarks search depths on identical fixed seeds. More games and deeper search can improve decisions, but also cost more compute.
 
 ## Output files
 
