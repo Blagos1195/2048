@@ -18,3 +18,5 @@ jobs:
       - run: python -m py_compile main.py selfplay_ai.py selfplay_ui.py
       - run: python -c "import selfplay_ui"
       - run: python -m pytest -q tests/test_selfplay.py
+      - name: Smoke-test shared-memory parallel training
+        run: python selfplay_ai.py train --games 4 --workers 2 --eval-every 0 --log-every 1 --out /tmp/selfplay-parallel-smoke
