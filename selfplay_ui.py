@@ -226,7 +226,7 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
         board_size = max(180, min(width - margin * 2, height - header_h - footer_h - button_h - gap * 3))
         board_x = (width - board_size) // 2
         board_y = header_h + 12
-        new_width = (width - margin * 2 - gap) // 2 if mode == 3 else width - margin * 2
+        new_width = (width - margin * 2 - gap) // 2
         new_rect = pygame.Rect(margin, height - footer_h - button_h - 4, new_width, button_h)
         info_rect = pygame.Rect(new_rect.right + gap, new_rect.y, (width - margin * 2 - gap) // 2, button_h)
 
@@ -317,7 +317,7 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
         stat_surface = small.render(stats, True, TEXT)
         screen.blit(stat_surface, stat_surface.get_rect(center=(width // 2, stats_y)))
 
-        new_width = (width - margin * 2 - gap) // 2 if mode == 3 else width - margin * 2
+        new_width = (width - margin * 2 - gap) // 2
         new_rect = pygame.Rect(margin, height - footer_h - button_h - 4, new_width, button_h)
         info_rect = pygame.Rect(new_rect.right + gap, new_rect.y, (width - margin * 2 - gap) // 2, button_h)
         draw_button(new_rect, "New Game")
