@@ -1,0 +1,79 @@
+name: Train self-learning 2048 AI
+
+on:
+  push:
+    branches: [main, main-selfplay-integration]
+    paths:
+      - '.github/workflows/train-selfplay.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: selfplay-training
+  cancel-in-progress: false
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - name: Check out current branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements-selfplay.txt
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements-selfplay.txt
+
+      - name: Run tests
+        run: python -m pytest -q tests/test_selfplay.py
+
+      - name: Train or resume in a runner-safe chunk
+        shell: bash
+        run: |
+          mkdir -p models/selfplay
+          if [ -f models/selfplay/latest.npz ]; then
+            echo "Resuming from the latest committed checkpoint"
+            python selfplay_ai.py train --games 45000 --depth 1 --eval-every 2500 --eval-games 20 --eval-depth 1 --log-every 100 --out models/selfplay --resume models/selfplay/latest.npz --resume-metrics
+          else
+            echo "No checkpoint exists; training starts from zero weights"
+            python selfplay_ai.py train --games 45000 --depth 1 --eval-every 2500 --eval-games 20 --eval-depth 1 --log-every 100 --out models/selfplay
+          fi
+
+      - name: Evaluate best learned checkpoint
+        run: >-
+          python selfplay_ai.py evaluate
+          --model models/selfplay/best.npz
+          --games 100
+          --depth 1
+          --seed 3000000
+
+      - name: Upload trained model and training metrics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: self-learning-2048-trained-model
+          path: |
+            models/selfplay/*.npz
+            models/selfplay/training.csv
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Commit trained checkpoints to the current branch
+        if: success()
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add models/selfplay/best.npz models/selfplay/latest.npz models/selfplay/training.csv
+          git commit -m "Update trained self-learning 2048 model" || echo "No model changes to commit"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
