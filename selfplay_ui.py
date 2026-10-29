@@ -479,7 +479,8 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
             # Nearly invisible status pixels: left = AI control, middle = auto,
             # right = a valid move is waiting. Hotspots are larger than the pixels.
             with plan_lock:
-                ready = (move_plan["board"] == game.board.tobytes()
+                ready = (ai_control
+                         and move_plan["board"] == game.board.tobytes()
                          and move_plan["action"] in legal_actions_safe(game.board))
                 thinking = move_plan["busy"]
             pixel_y = height - 8
