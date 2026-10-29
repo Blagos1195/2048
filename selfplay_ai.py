@@ -433,7 +433,6 @@ def train(args: argparse.Namespace) -> None:
                     result["td_abs_mean"] = _apply_collected_episode(evaluator, collected["transitions"])
                     batch = [result]
                 else:
-                    # Workers read a stable shared snapshot; the parent updates weights only after the batch completes.
                     collected_batch = list(pool.map(_collect_episode, tasks))
                     batch = []
                     for collected in collected_batch:
@@ -548,45 +547,95 @@ def benchmark_cli(args: argparse.Namespace) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Self-learning 2048: n-tuple TD + learned-value Expectimax")
+    parser = argparse.ArgumentParser(
+        description="Self-learning 2048 AI. Train a model, test a checkpoint, or compare search depths.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        epilog="""Examples:
+  python main.py
+  python main.py train --games 100000 --depth 1
+  python main.py train --resume models/selfplay/latest.npz --games 50000
+  python main.py evaluate --model models/selfplay/best.npz --games 100 --depth 2
+  python main.py benchmark --model models/selfplay/best.npz --depths 1 2
+
+Tip: start with the default training settings. Search depth 1 is much faster;
+depth 2 can play better but takes considerably longer.""",
+    )
     sub = parser.add_subparsers(dest="command", required=True)
-    t = sub.add_parser("train", help="train from scratch or resume a checkpoint")
-    t.add_argument("--games", type=int, default=100_000)
-    t.add_argument("--depth", type=int, default=1, help="training search depth; depth 1 is much faster")
-    t.add_argument("--seed", type=int, default=20261028)
-    t.add_argument("--alpha", type=float, default=0.08)
-    t.add_argument("--gamma", type=float, default=0.995)
-    t.add_argument("--epsilon", type=float, default=0.20)
-    t.add_argument("--min-epsilon", type=float, default=0.02)
-    t.add_argument("--epsilon-decay", type=float, default=0.99995)
-    t.add_argument("--eval-every", type=int, default=500)
-    t.add_argument("--eval-games", type=int, default=30)
-    t.add_argument("--eval-depth", type=int, default=1)
-    t.add_argument("--eval-seed", type=int, default=1_000_000)
-    t.add_argument("--log-every", type=int, default=25)
-    t.add_argument("--out", default="models/selfplay")
-    t.add_argument("--resume", default=None)
-    t.add_argument("--resume-metrics", action="store_true")
-    t.add_argument("--workers", type=int, default=0, help="parallel self-play workers; 0 auto-selects up to 4")
+
+    t = sub.add_parser(
+        "train",
+        help="teach the AI by playing games",
+        description="Train a new model from scratch, or continue from a saved checkpoint.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    t.add_argument("--games", type=int, default=100_000,
+                   help="number of training games to play")
+    t.add_argument("--depth", type=int, default=1,
+                   help="search depth used while training; 1 is fast, higher values are slower")
+    t.add_argument("--seed", type=int, default=20261028,
+                   help="random seed; reuse it to make runs more reproducible")
+    t.add_argument("--alpha", type=float, default=0.08,
+                   help="learning rate; larger values change learned weights more per update")
+    t.add_argument("--gamma", type=float, default=0.995,
+                   help="discount factor for future value; closer to 1 values future states more")
+    t.add_argument("--epsilon", type=float, default=0.20,
+                   help="starting chance of choosing a random legal move to explore")
+    t.add_argument("--min-epsilon", type=float, default=0.02,
+                   help="lowest exploration chance after epsilon decays")
+    t.add_argument("--epsilon-decay", type=float, default=0.99995,
+                   help="multiplier applied to exploration after each game; closer to 1 decays slower")
+    t.add_argument("--eval-every", type=int, default=500,
+                   help="run a check-up every this many games; 0 disables periodic evaluation")
+    t.add_argument("--eval-games", type=int, default=30,
+                   help="number of games used for each check-up")
+    t.add_argument("--eval-depth", type=int, default=1,
+                   help="search depth used for check-up games")
+    t.add_argument("--eval-seed", type=int, default=1_000_000,
+                   help="starting random seed for check-up games")
+    t.add_argument("--log-every", type=int, default=25,
+                   help="print training progress every this many games")
+    t.add_argument("--out", default="models/selfplay",
+                   help="folder for checkpoints and the training.csv metrics file")
+    t.add_argument("--resume", default=None,
+                   help="checkpoint .npz to continue training from instead of starting fresh")
+    t.add_argument("--resume-metrics", action="store_true",
+                   help="append to the existing training.csv instead of replacing it")
+    t.add_argument("--workers", type=int, default=0,
+                   help="parallel game workers; 0 automatically selects up to 4 workers")
     t.set_defaults(func=train)
-    e = sub.add_parser("evaluate", help="evaluate a saved model on fixed seeds")
-    e.add_argument("--model", required=True)
-    e.add_argument("--games", type=int, default=100)
-    e.add_argument("--depth", type=int, default=2)
-    e.add_argument("--seed", type=int, default=2_000_000)
-    e.add_argument("--alpha", type=float, default=0.08)
-    e.add_argument("--gamma", type=float, default=0.995)
+
+    e = sub.add_parser(
+        "evaluate",
+        help="measure how well a saved model plays",
+        description="Run games with a saved model and report scores, tile sizes, and win milestones.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    e.add_argument("--model", required=True,
+                   help="checkpoint .npz file to test")
+    e.add_argument("--games", type=int, default=100,
+                   help="number of test games; more games give a more reliable estimate")
+    e.add_argument("--depth", type=int, default=2,
+                   help="search depth; higher can play better but is much slower")
+    e.add_argument("--seed", type=int, default=2_000_000,
+                   help="starting random seed for repeatable test games")
     e.set_defaults(func=evaluate_cli)
-    b = sub.add_parser("benchmark", help="compare search depths on identical fixed seeds")
-    b.add_argument("--model", required=True)
-    b.add_argument("--games", type=int, default=10)
-    b.add_argument("--depths", type=int, nargs="+", default=[1, 2])
-    b.add_argument("--seed", type=int, default=4_000_000)
-    b.add_argument("--alpha", type=float, default=0.08)
-    b.add_argument("--gamma", type=float, default=0.995)
+
+    b = sub.add_parser(
+        "benchmark",
+        help="compare how search depths affect strength and speed",
+        description="Test each depth on the same game seeds and report performance and speed.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    b.add_argument("--model", required=True,
+                   help="checkpoint .npz file to benchmark")
+    b.add_argument("--games", type=int, default=10,
+                   help="number of games per search depth")
+    b.add_argument("--depths", type=int, nargs="+", default=[1, 2],
+                   help="one or more search depths to compare, for example: --depths 1 2 3")
+    b.add_argument("--seed", type=int, default=4_000_000,
+                   help="starting random seed; each depth uses the same seeds")
     b.set_defaults(func=benchmark_cli)
     return parser
-
 
 def main() -> None:
     args = build_parser().parse_args()
