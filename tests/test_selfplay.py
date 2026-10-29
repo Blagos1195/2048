@@ -123,3 +123,19 @@ def test_training_parser_exposes_worker_and_benchmark_options():
     assert args.workers == 2
     bench = build_parser().parse_args(["benchmark", "--model", "model.npz", "--games", "3", "--depths", "1", "2"])
     assert bench.depths == [1, 2]
+
+
+def test_benchmark_command_validates_depths_without_single_depth(monkeypatch):
+    import sys
+    import selfplay_ai
+
+    captured = []
+    monkeypatch.setattr(
+        sys, "argv",
+        ["selfplay_ai.py", "benchmark", "--model", "unused.npz", "--depths", "1", "2"],
+    )
+    monkeypatch.setattr(selfplay_ai, "benchmark_cli", lambda args: captured.append(args))
+
+    selfplay_ai.main()
+
+    assert captured[0].depths == [1, 2]
