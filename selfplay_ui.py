@@ -179,7 +179,16 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
     current_game_recorded = False
     move_plan = {"board": None, "action": None, "busy": False}
     plan_lock = threading.Lock()
-    plan_version = {"value": 0}
+    # A single worker processes only the latest requested board. This prevents
+    # spam-clicking/restarting from launching concurrent searches on one agent.
+    worker_state = {
+        "active": False,
+        "version": 0,
+        "requested_board": None,
+        "requested_key": None,
+    }
+    last_move_time = 0.0
+    move_debounce_seconds = 0.08
 
     title_font = pygame.font.SysFont("arial", 30, bold=True)
     score_font = pygame.font.SysFont("arial", 17, bold=True)
@@ -188,30 +197,78 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
     button_font = pygame.font.SysFont("arial", 16, bold=True)
 
     def schedule_plan():
-        """Think in the background while the player is deciding when to move."""
+        """Request a move without starting duplicate search threads."""
         if game_over or not can_move(game.board):
+            cancel_plan()
             return
         board = game.board.copy()
         board_key = board.tobytes()
-        plan_version["value"] += 1
-        version = plan_version["value"]
         with plan_lock:
+            worker_state["version"] += 1
+            worker_state["requested_board"] = board
+            worker_state["requested_key"] = board_key
             move_plan["board"] = None
             move_plan["action"] = None
             move_plan["busy"] = True
+            if worker_state["active"]:
+                return
+            worker_state["active"] = True
 
-        def think():
-            try:
-                action = agent.choose_action(board)
-            except (ValueError, RuntimeError):
-                action = None
-            with plan_lock:
-                if version == plan_version["value"]:
-                    move_plan["board"] = board_key
-                    move_plan["action"] = action
-                    move_plan["busy"] = False
+        def worker_loop():
+            while True:
+                with plan_lock:
+                    requested_board = worker_state["requested_board"]
+                    requested_key = worker_state["requested_key"]
+                    version = worker_state["version"]
+                    if requested_board is None:
+                        worker_state["active"] = False
+                        return
+                    # Consume this request. Newer requests replace it while thinking.
+                    worker_state["requested_board"] = None
+                    worker_state["requested_key"] = None
 
-        threading.Thread(target=think, daemon=True).start()
+                try:
+                    action = agent.choose_action(requested_board)
+                except Exception as exc:
+                    # Keep an AI/search failure from killing the UI event loop.
+                    print(f"[View] AI move calculation failed: {exc}")
+                    action = None
+
+                with plan_lock:
+                    if (version == worker_state["version"]
+                            and requested_key == game.board.tobytes()
+                            and not game_over):
+                        legal = legal_actions_safe(game.board)
+                        if action in legal:
+                            move_plan["board"] = requested_key
+                            move_plan["action"] = action
+                            move_plan["busy"] = False
+                        else:
+                            move_plan["board"] = None
+                            move_plan["action"] = None
+                            move_plan["busy"] = False
+                    # If another board was requested during this search, loop and
+                    # calculate only the newest request. Otherwise release worker.
+                    if worker_state["requested_board"] is None:
+                        worker_state["active"] = False
+                        return
+
+        threading.Thread(target=worker_loop, daemon=True, name="2048-ai-planner").start()
+
+    def cancel_plan():
+        """Invalidate any result for an old board and stop pending requests."""
+        with plan_lock:
+            worker_state["version"] += 1
+            worker_state["requested_board"] = None
+            worker_state["requested_key"] = None
+            move_plan["board"] = None
+            move_plan["action"] = None
+            move_plan["busy"] = False
+
+    def legal_actions_safe(board):
+        # Import-free local guard: only accept a known legal action for this board.
+        from selfplay_ai import legal_actions
+        return legal_actions(board)
 
     def record_game():
         """Save this game once as the player's achievement."""
@@ -275,6 +332,8 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                 if new_rect.collidepoint(event.pos):
                     record_game()
                     best_score = max(best_score, game.score)
+                    cancel_plan()
+                    cancel_plan()
                     game = Game2048(seed + int(time.time() * 1000) % 1000000)
                     game_over = False
                     current_game_recorded = False
@@ -297,6 +356,10 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                     last_action = "Ready"
                     stats_visible = False
                     schedule_plan()
+                elif stats_visible and mode == 4:
+                    # Don't let keys intended to close/interact with the overlay
+                    # accidentally advance the hidden game.
+                    continue
                 elif not game_over:
                     if mode == 3:
                         auto = not auto
@@ -305,33 +368,39 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                         with plan_lock:
                             planned_board = move_plan["board"]
                             planned_action = move_plan["action"]
-                        if planned_board == game.board.tobytes() and planned_action is not None:
-                            action = planned_action
-                        else:
-                            # A rare cold-start fallback; normal play uses the prepared action.
-                            action = agent.choose_action(game.board.copy())
-                        moved, _, terminal = game.step(action)
-                        last_action = ACTION_NAMES[action] if moved else "No move"
-                        best_score = max(best_score, game.score)
-                        game_over = terminal or not can_move(game.board)
-                        if game_over:
-                            record_game()
-                        else:
-                            schedule_plan()
+                        # Ignore key repeats while the planner is busy or the
+                        # board has changed. Never run a second search on the UI thread.
+                        now = time.monotonic()
+                        if (not game_over and planned_board == game.board.tobytes()
+                                and planned_action in legal_actions_safe(game.board)
+                                and now - last_move_time >= move_debounce_seconds):
+                            last_move_time = now
+                            moved, _, terminal = game.step(planned_action)
+                            if moved:
+                                last_action = ACTION_NAMES[planned_action]
+                                best_score = max(best_score, game.score)
+                                game_over = terminal or not can_move(game.board)
+                                if game_over:
+                                    cancel_plan()
+                                    record_game()
+                                else:
+                                    schedule_plan()
 
         if auto and not game_over:
             with plan_lock:
                 planned_board = move_plan["board"]
                 planned_action = move_plan["action"]
-            if planned_board == game.board.tobytes() and planned_action is not None:
+            if planned_board == game.board.tobytes() and planned_action in legal_actions_safe(game.board):
                 moved, _, terminal = game.step(planned_action)
-                last_action = ACTION_NAMES[planned_action] if moved else "No move"
-                best_score = max(best_score, game.score)
-                game_over = terminal or not can_move(game.board)
-                if game_over:
-                    record_game()
-                else:
-                    schedule_plan()
+                if moved:
+                    last_action = ACTION_NAMES[planned_action]
+                    best_score = max(best_score, game.score)
+                    game_over = terminal or not can_move(game.board)
+                    if game_over:
+                        cancel_plan()
+                        record_game()
+                    else:
+                        schedule_plan()
 
         screen.fill(BG)
         # Familiar 2048 header and compact score cards.
