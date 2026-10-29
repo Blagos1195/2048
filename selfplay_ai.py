@@ -8,8 +8,14 @@ import random
 import time
 import os
 from collections import OrderedDict
-from concurrent.futures import ProcessPoolExecutor
-from multiprocessing import shared_memory
+try:
+    from concurrent.futures import ProcessPoolExecutor
+except ImportError:  # Browser runtimes do not provide process pools.
+    ProcessPoolExecutor = None
+try:
+    from multiprocessing import shared_memory
+except ImportError:  # Shared memory is only needed by desktop parallel training.
+    shared_memory = None
 from pathlib import Path
 
 import numpy as np
