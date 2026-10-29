@@ -60,6 +60,7 @@ DETAILED OPTIONS
     parser.add_argument("--seed", type=int, help="random seed for repeatable runs")
     parser.add_argument("--out", help="folder where training checkpoints and metrics are saved")
     parser.add_argument("--model", help="saved model checkpoint (.npz) for viewing or testing")
+    parser.print_help()
 
 
 def main() -> None:
