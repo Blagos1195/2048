@@ -533,7 +533,7 @@ def benchmark(evaluator: NTupleValue, games: int, depths: list[int], seed_start:
                   f"average score {score_change:+.1f}% | throughput {speed_change:+.1f}%", flush=True)
 
 def evaluate_cli(args: argparse.Namespace) -> None:
-    evaluator = NTupleValue(alpha=args.alpha, gamma=args.gamma, seed=args.seed)
+    evaluator = NTupleValue(seed=args.seed)
     evaluator.load(args.model)
     report = evaluate(evaluator, games=args.games, depth=args.depth, seed_start=args.seed)
     for key, value in report.items():
@@ -541,7 +541,7 @@ def evaluate_cli(args: argparse.Namespace) -> None:
 
 
 def benchmark_cli(args: argparse.Namespace) -> None:
-    evaluator = NTupleValue(alpha=args.alpha, gamma=args.gamma, seed=args.seed)
+    evaluator = NTupleValue(seed=args.seed)
     evaluator.load(args.model)
     benchmark(evaluator, games=args.games, depths=args.depths, seed_start=args.seed)
 
