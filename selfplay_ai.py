@@ -590,7 +590,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = build_parser().parse_args()
-    if args.depth < 1:
+    if hasattr(args, "depth") and args.depth < 1:
         raise SystemExit("--depth must be >= 1")
     if args.command == "train" and args.games < 1:
         raise SystemExit("--games must be >= 1")
