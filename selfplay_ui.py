@@ -163,7 +163,6 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
     running = True
     best_score = 0
     last_action = "Ready"
-    stats_visible = False
     move_plan = {"board": None, "action": None, "busy": False}
     plan_lock = threading.Lock()
     plan_version = {"value": 0}
@@ -225,8 +224,9 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
         board_size = max(180, min(width - margin * 2, height - header_h - footer_h - button_h - gap * 3))
         board_x = (width - board_size) // 2
         board_y = header_h + 12
-        new_rect = pygame.Rect(margin, height - footer_h - button_h - 4, (width - margin * 2 - gap) // 2, button_h)
-        info_rect = pygame.Rect(new_rect.right + gap, new_rect.y, new_rect.width, button_h)
+        new_width = (width - margin * 2 - gap) // 2 if mode == 3 else width - margin * 2
+        new_rect = pygame.Rect(margin, height - footer_h - button_h - 4, new_width, button_h)
+        info_rect = pygame.Rect(new_rect.right + gap, new_rect.y, (width - margin * 2 - gap) // 2, button_h)
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -240,11 +240,8 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                     game_over = False
                     last_action = "Ready"
                     schedule_plan()
-                elif info_rect.collidepoint(event.pos):
-                    if mode == 3:
-                        auto = not auto
-                    else:
-                        stats_visible = not stats_visible
+                elif mode == 3 and info_rect.collidepoint(event.pos):
+                    auto = not auto
             elif event.type == pygame.KEYDOWN:
                 if event.key in (pygame.K_ESCAPE, pygame.K_q):
                     running = False
@@ -310,26 +307,16 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
         stat_surface = small.render(stats, True, TEXT)
         screen.blit(stat_surface, stat_surface.get_rect(center=(width // 2, stats_y)))
 
-        new_rect = pygame.Rect(margin, height - footer_h - button_h - 4, (width - margin * 2 - gap) // 2, button_h)
-        info_rect = pygame.Rect(new_rect.right + gap, new_rect.y, new_rect.width, button_h)
+        new_width = (width - margin * 2 - gap) // 2 if mode == 3 else width - margin * 2
+        new_rect = pygame.Rect(margin, height - footer_h - button_h - 4, new_width, button_h)
+        info_rect = pygame.Rect(new_rect.right + gap, new_rect.y, (width - margin * 2 - gap) // 2, button_h)
         draw_button(new_rect, "New Game")
-        draw_button(info_rect, "Pause AI" if auto else ("Resume AI" if mode == 3 else "AI Stats"))
+        if mode == 3:
+            draw_button(info_rect, "Pause AI" if auto else "Resume AI")
         footer_text = ("AI thinking..." if move_plan["busy"] else "AI ready") if not game_over else "Game over"
         hint = footer_text if mode == 3 else ("Press any key to move" if not game_over else "Start a new game to play again")
         hint_surface = tiny.render(hint + "   |   R: restart   Esc: quit", True, TEXT)
         screen.blit(hint_surface, hint_surface.get_rect(center=(width // 2, height - 12)))
-
-        if stats_visible and mode == 4 and not game_over:
-            panel_w = min(width - 32, 300)
-            panel_h = 150
-            panel = pygame.Rect((width - panel_w) // 2, (height - panel_h) // 2, panel_w, panel_h)
-            pygame.draw.rect(screen, (250, 248, 239), panel, border_radius=10)
-            heading = score_font.render("AI GAME STATS", True, TEXT)
-            screen.blit(heading, heading.get_rect(center=(panel.centerx, panel.y + 24)))
-            for i, line in enumerate((f"Search depth: {depth}", f"Moves played: {game.moves}",
-                                      f"Current score: {game.score:,}", f"Largest tile: {game.max_tile:,}")):
-                surf = small.render(line, True, TEXT)
-                screen.blit(surf, surf.get_rect(center=(panel.centerx, panel.y + 52 + i * 22)))
 
         if game_over:
             overlay = pygame.Surface((width, height), pygame.SRCALPHA)
