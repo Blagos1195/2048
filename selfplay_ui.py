@@ -96,6 +96,7 @@ def train_view(mode: int, games_target: int, depth: int, out: str, seed: int):
             for i, game in enumerate(games):
                 if episode >= games_target:
                     break
+                agent.epsilon = max(0.02, 0.08 * (0.9999 ** episode))
                 if not can_move(game.board):
                     episode += 1
                     episode_scores.append(game.score)
