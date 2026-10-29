@@ -264,6 +264,14 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
             elif event.type == pygame.VIDEORESIZE:
                 screen = pygame.display.set_mode((max(360, event.w), max(480, event.h)), pygame.RESIZABLE)
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if stats_visible and mode == 4:
+                    panel_w = min(width - 32, 320)
+                    panel_h = 230
+                    stats_panel = pygame.Rect((width - panel_w) // 2, (height - panel_h) // 2, panel_w, panel_h)
+                    close_rect = pygame.Rect(stats_panel.right - 34, stats_panel.y + 8, 26, 26)
+                    if close_rect.collidepoint(event.pos) or not stats_panel.collidepoint(event.pos):
+                        stats_visible = False
+                    continue
                 if new_rect.collidepoint(event.pos):
                     record_game()
                     best_score = max(best_score, game.score)
@@ -344,11 +352,6 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
         board_y = max(header_h, (height - board_size - footer_h - button_h - gap) // 2)
         draw_board(screen, game.board, (board_x, board_y, board_size, board_size), title_font)
 
-        stats_y = min(height - footer_h - button_h - 18, board_y + board_size + 8)
-        stats = f"Moves {game.moves}   |   Largest tile {game.max_tile:,}"
-        stat_surface = small.render(stats, True, TEXT)
-        screen.blit(stat_surface, stat_surface.get_rect(center=(width // 2, stats_y)))
-
         new_width = (width - margin * 2 - gap) // 2
         new_rect = pygame.Rect(margin, height - footer_h - button_h - 4, new_width, button_h)
         info_rect = pygame.Rect(new_rect.right + gap, new_rect.y, (width - margin * 2 - gap) // 2, button_h)
@@ -358,8 +361,8 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
         else:
             draw_button(info_rect, "Your Stats")
         footer_text = ("AI thinking..." if move_plan["busy"] else "AI ready") if not game_over else "Game over"
-        hint = footer_text if mode == 3 else ("Press any key to move" if not game_over else "Start a new game to play again")
-        hint_surface = tiny.render(hint + "   |   R: restart   Esc: quit", True, TEXT)
+        hint = footer_text if mode == 3 else ("Press any key to move" if not game_over else "Game over")
+        hint_surface = tiny.render(hint, True, TEXT)
         screen.blit(hint_surface, hint_surface.get_rect(center=(width // 2, height - 12)))
 
         if stats_visible and mode == 4:
@@ -368,7 +371,12 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
             panel = pygame.Rect((width - panel_w) // 2, (height - panel_h) // 2, panel_w, panel_h)
             pygame.draw.rect(screen, (250, 248, 239), panel, border_radius=10)
             pygame.draw.rect(screen, PANEL, panel, width=2, border_radius=10)
-            heading = score_font.render("YOUR 2048 STATS", True, TEXT)
+            close_rect = pygame.Rect(panel.right - 34, panel.y + 8, 26, 26)
+            pygame.draw.rect(screen, (238, 228, 218), close_rect, border_radius=5)
+            close_font = pygame.font.SysFont("arial", 20, bold=True)
+            close_label = close_font.render("x", True, TEXT)
+            screen.blit(close_label, close_label.get_rect(center=close_rect.center))
+            heading = score_font.render("2048 STATS", True, TEXT)
             screen.blit(heading, heading.get_rect(center=(panel.centerx, panel.y + 26)))
             average = (player_stats["total_score"] / player_stats["games_played"]
                        if player_stats["games_played"] else 0)
