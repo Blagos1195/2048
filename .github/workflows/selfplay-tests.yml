@@ -15,4 +15,6 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install -r requirements-selfplay.txt
+      - run: python -m py_compile main.py selfplay_ai.py selfplay_ui.py
+      - run: python -c "import selfplay_ui"
       - run: python -m pytest -q tests/test_selfplay.py
