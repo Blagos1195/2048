@@ -9,6 +9,7 @@ Modes:
 from __future__ import annotations
 
 import argparse
+import json
 import time
 from pathlib import Path
 
@@ -163,8 +164,19 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
     running = True
     best_score = 0
     last_action = "Ready"
-    player_move_counts = {name: 0 for name in ACTION_NAMES}
     stats_visible = False
+    stats_path = Path("player_stats.json")
+    player_stats = {"games_played": 0, "total_score": 0, "highest_score": 0, "highest_tile": 2}
+    try:
+        if stats_path.exists():
+            saved_stats = json.loads(stats_path.read_text(encoding="utf-8"))
+            for key in player_stats:
+                if isinstance(saved_stats.get(key), (int, float)) and saved_stats[key] >= 0:
+                    player_stats[key] = saved_stats[key]
+    except (OSError, ValueError, TypeError):
+        print("[View] Could not read player_stats.json; starting with fresh stats.")
+
+    current_game_recorded = False
     move_plan = {"board": None, "action": None, "busy": False}
     plan_lock = threading.Lock()
     plan_version = {"value": 0}
@@ -201,11 +213,27 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
 
         threading.Thread(target=think, daemon=True).start()
 
+    def record_game():
+        """Save this game once as the player's achievement."""
+        nonlocal current_game_recorded
+        if current_game_recorded or game.moves == 0:
+            return
+        player_stats["games_played"] += 1
+        player_stats["total_score"] += int(game.score)
+        player_stats["highest_score"] = max(int(player_stats["highest_score"]), int(game.score))
+        player_stats["highest_tile"] = max(int(player_stats["highest_tile"]), int(game.max_tile))
+        current_game_recorded = True
+        try:
+            stats_path.write_text(json.dumps(player_stats, indent=2) + "\n", encoding="utf-8")
+        except OSError as exc:
+            print(f"[View] Could not save player stats: {exc}")
+
     def restart():
-        nonlocal game, game_over, last_action
-        best_score = game.score
+        nonlocal game, game_over, last_action, current_game_recorded
+        record_game()
         game = Game2048(seed + int(time.time() * 1000) % 1000000)
         game_over = False
+        current_game_recorded = False
         last_action = "Ready"
         schedule_plan()
 
@@ -237,11 +265,12 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                 screen = pygame.display.set_mode((max(360, event.w), max(480, event.h)), pygame.RESIZABLE)
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if new_rect.collidepoint(event.pos):
+                    record_game()
                     best_score = max(best_score, game.score)
                     game = Game2048(seed + int(time.time() * 1000) % 1000000)
                     game_over = False
+                    current_game_recorded = False
                     last_action = "Ready"
-                    player_move_counts = {name: 0 for name in ACTION_NAMES}
                     stats_visible = False
                     schedule_plan()
                 elif mode == 3 and info_rect.collidepoint(event.pos):
@@ -252,11 +281,12 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                 if event.key in (pygame.K_ESCAPE, pygame.K_q):
                     running = False
                 elif event.key == pygame.K_r:
+                    record_game()
                     best_score = max(best_score, game.score)
                     game = Game2048(seed + int(time.time() * 1000) % 1000000)
                     game_over = False
+                    current_game_recorded = False
                     last_action = "Ready"
-                    player_move_counts = {name: 0 for name in ACTION_NAMES}
                     stats_visible = False
                     schedule_plan()
                 elif not game_over:
@@ -274,11 +304,11 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                             action = agent.choose_action(game.board.copy())
                         moved, _, terminal = game.step(action)
                         last_action = ACTION_NAMES[action] if moved else "No move"
-                        if moved:
-                            player_move_counts[last_action] += 1
                         best_score = max(best_score, game.score)
                         game_over = terminal or not can_move(game.board)
-                        if not game_over:
+                        if game_over:
+                            record_game()
+                        else:
                             schedule_plan()
 
         if auto and not game_over:
@@ -290,7 +320,9 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                 last_action = ACTION_NAMES[planned_action] if moved else "No move"
                 best_score = max(best_score, game.score)
                 game_over = terminal or not can_move(game.board)
-                if not game_over:
+                if game_over:
+                    record_game()
+                else:
                     schedule_plan()
 
         screen.fill(BG)
@@ -298,7 +330,7 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
         screen.blit(title_font.render("2048", True, TEXT), (margin, 14))
         score_w = max(82, (width - margin * 2 - 8) // 2)
         score_x = width - margin - score_w * 2 - 8
-        for i, (label, value) in enumerate((("SCORE", game.score), ("BEST", max(best_score, game.score)))):
+        for i, (label, value) in enumerate((("SCORE", game.score), ("BEST", max(int(player_stats["highest_score"]), best_score, game.score)))):
             rect = pygame.Rect(score_x + i * (score_w + 8), 12, score_w, 54)
             pygame.draw.rect(screen, PANEL, rect, border_radius=5)
             screen.blit(tiny.render(label, True, (238, 228, 218)),
@@ -324,29 +356,33 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
         if mode == 3:
             draw_button(info_rect, "Pause AI" if auto else "Resume AI")
         else:
-            draw_button(info_rect, "Move Stats")
+            draw_button(info_rect, "Your Stats")
         footer_text = ("AI thinking..." if move_plan["busy"] else "AI ready") if not game_over else "Game over"
         hint = footer_text if mode == 3 else ("Press any key to move" if not game_over else "Start a new game to play again")
         hint_surface = tiny.render(hint + "   |   R: restart   Esc: quit", True, TEXT)
         screen.blit(hint_surface, hint_surface.get_rect(center=(width // 2, height - 12)))
 
-        if stats_visible and mode == 4 and not game_over:
-            panel_w = min(width - 32, 310)
-            panel_h = 210
+        if stats_visible and mode == 4:
+            panel_w = min(width - 32, 320)
+            panel_h = 230
             panel = pygame.Rect((width - panel_w) // 2, (height - panel_h) // 2, panel_w, panel_h)
             pygame.draw.rect(screen, (250, 248, 239), panel, border_radius=10)
-            heading = score_font.render("PLAYER MOVE STATS", True, TEXT)
-            screen.blit(heading, heading.get_rect(center=(panel.centerx, panel.y + 24)))
+            pygame.draw.rect(screen, PANEL, panel, width=2, border_radius=10)
+            heading = score_font.render("YOUR 2048 STATS", True, TEXT)
+            screen.blit(heading, heading.get_rect(center=(panel.centerx, panel.y + 26)))
+            average = (player_stats["total_score"] / player_stats["games_played"]
+                       if player_stats["games_played"] else 0)
             lines = [
-                f"Moves made: {game.moves}",
-                f"Last move: {last_action}",
-                f"LEFT: {player_move_counts['LEFT']}     RIGHT: {player_move_counts['RIGHT']}",
-                f"UP: {player_move_counts['UP']}       DOWN: {player_move_counts['DOWN']}",
-                f"Score: {game.score:,}     Largest tile: {game.max_tile:,}",
+                f"Games played: {int(player_stats['games_played']):,}",
+                f"Highest score: {int(player_stats['highest_score']):,}",
+                f"Average score: {average:,.1f}",
+                f"Highest tile: {int(player_stats['highest_tile']):,}",
+                "",
+                "Stats are saved between sessions",
             ]
             for i, line in enumerate(lines):
                 surf = tiny.render(line, True, TEXT)
-                screen.blit(surf, surf.get_rect(center=(panel.centerx, panel.y + 54 + i * 29)))
+                screen.blit(surf, surf.get_rect(center=(panel.centerx, panel.y + 58 + i * 27)))
 
         if game_over:
             overlay = pygame.Surface((width, height), pygame.SRCALPHA)
@@ -373,6 +409,7 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
         pygame.display.flip()
         clock.tick(30 if mode == 3 else 60)
 
+    record_game()
     pygame.quit()
 
 
