@@ -258,9 +258,11 @@ def play_game(agent: ExpectimaxAgent, seed: int, train: bool = False, max_moves:
     game = Game2048(seed)
     td_abs = 0.0
     td_count = 0
+    search_nodes = 0
     while can_move(game.board) and game.moves < max_moves:
         state = game.board.copy()
         action = agent.choose_action(state)
+        search_nodes += agent.nodes
         moved, gained, terminal = game.step(action)
         if not moved:
             if can_move(game.board):
@@ -277,6 +279,7 @@ def play_game(agent: ExpectimaxAgent, seed: int, train: bool = False, max_moves:
         "seed": seed, "score": game.score, "max_tile": game.max_tile, "moves": game.moves,
         "reached_2048": int(game.max_tile >= 2048), "reached_4096": int(game.max_tile >= 4096),
         "reached_8192": int(game.max_tile >= 8192), "td_abs_mean": td_abs / max(td_count, 1),
+        "search_nodes": search_nodes,
     }
 
 
@@ -482,12 +485,56 @@ def _collect_episode_local(evaluator: NTupleValue, seed: int, epsilon: float, de
             "reached_2048": int(game.max_tile >= 2048), "reached_4096": int(game.max_tile >= 4096),
             "reached_8192": int(game.max_tile >= 8192), "transitions": transitions}
 
+
+def benchmark(evaluator: NTupleValue, games: int, depths: list[int], seed_start: int) -> None:
+    """Compare search depths on identical deterministic game seeds."""
+    reports = []
+    for depth in depths:
+        started = time.perf_counter()
+        rows = [play_game(ExpectimaxAgent(evaluator, depth=depth, seed=seed_start), seed_start + i)
+                for i in range(games)]
+        elapsed = time.perf_counter() - started
+        scores = np.asarray([row["score"] for row in rows], dtype=np.float64)
+        tiles = np.asarray([row["max_tile"] for row in rows], dtype=np.float64)
+        report = {
+            "depth": depth,
+            "games": games,
+            "avg_score": float(scores.mean()),
+            "median_score": float(np.median(scores)),
+            "rate_2048": float(np.mean(tiles >= 2048)),
+            "rate_4096": float(np.mean(tiles >= 4096)),
+            "avg_max_tile": float(tiles.mean()),
+            "seconds": elapsed,
+            "games_per_second": games / max(elapsed, 1e-9),
+            "avg_search_nodes_per_move": float(np.mean([
+                row["search_nodes"] / max(row["moves"], 1) for row in rows
+            ])),
+        }
+        reports.append(report)
+        print("BENCHMARK " + " | ".join(
+            f"{key}={value:.3f}" if isinstance(value, float) else f"{key}={value}"
+            for key, value in report.items()
+        ), flush=True)
+    if len(reports) > 1:
+        base = reports[0]
+        for report in reports[1:]:
+            score_change = 100.0 * (report["avg_score"] - base["avg_score"]) / max(abs(base["avg_score"]), 1e-9)
+            speed_change = 100.0 * (report["games_per_second"] - base["games_per_second"]) / max(base["games_per_second"], 1e-9)
+            print(f"DEPTH {report['depth']} VS DEPTH {base['depth']}: "
+                  f"average score {score_change:+.1f}% | throughput {speed_change:+.1f}%", flush=True)
+
 def evaluate_cli(args: argparse.Namespace) -> None:
     evaluator = NTupleValue(alpha=args.alpha, gamma=args.gamma, seed=args.seed)
     evaluator.load(args.model)
     report = evaluate(evaluator, games=args.games, depth=args.depth, seed_start=args.seed)
     for key, value in report.items():
         print(f"{key}: {value}")
+
+
+def benchmark_cli(args: argparse.Namespace) -> None:
+    evaluator = NTupleValue(alpha=args.alpha, gamma=args.gamma, seed=args.seed)
+    evaluator.load(args.model)
+    benchmark(evaluator, games=args.games, depths=args.depths, seed_start=args.seed)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -520,6 +567,14 @@ def build_parser() -> argparse.ArgumentParser:
     e.add_argument("--alpha", type=float, default=0.08)
     e.add_argument("--gamma", type=float, default=0.995)
     e.set_defaults(func=evaluate_cli)
+    b = sub.add_parser("benchmark", help="compare search depths on identical fixed seeds")
+    b.add_argument("--model", required=True)
+    b.add_argument("--games", type=int, default=10)
+    b.add_argument("--depths", type=int, nargs="+", default=[1, 2])
+    b.add_argument("--seed", type=int, default=4_000_000)
+    b.add_argument("--alpha", type=float, default=0.08)
+    b.add_argument("--gamma", type=float, default=0.995)
+    b.set_defaults(func=benchmark_cli)
     return parser
 
 
@@ -531,6 +586,10 @@ def main() -> None:
         raise SystemExit("--games must be >= 1")
     if args.command == "train" and args.eval_depth < 1:
         raise SystemExit("--eval-depth must be >= 1")
+    if args.command == "train" and args.workers < 0:
+        raise SystemExit("--workers must be >= 0")
+    if args.command == "benchmark" and (args.games < 1 or not args.depths or min(args.depths) < 1):
+        raise SystemExit("benchmark games and search depths must be >= 1")
     args.func(args)
 
 
