@@ -7,6 +7,7 @@ import csv
 import random
 import time
 import os
+from collections import OrderedDict
 from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import shared_memory
 from pathlib import Path
@@ -181,17 +182,43 @@ class NTupleValue:
 
 
 class ExpectimaxAgent:
-    """Expectimax uses the learned value function, not a fixed board-shape heuristic."""
-    def __init__(self, evaluator: NTupleValue, depth: int = 1, seed: int = 1, epsilon: float = 0.0):
+    """Expectimax with bounded cross-turn caching and iterative deepening."""
+    def __init__(
+        self,
+        evaluator: NTupleValue,
+        depth: int = 1,
+        seed: int = 1,
+        epsilon: float = 0.0,
+        cache_size: int = 50000,
+    ):
         if depth < 1:
             raise ValueError("depth must be at least 1")
+        if cache_size < 1:
+            raise ValueError("cache_size must be at least 1")
         self.evaluator = evaluator
         self.depth = int(depth)
         self.rng = random.Random(seed)
         self.epsilon = float(epsilon)
         self.nodes = 0
-        self._chance_cache: dict[tuple[bytes, int], float] = {}
-        self._player_cache: dict[tuple[bytes, int], float] = {}
+        self.cache_size = int(cache_size)
+        # These caches intentionally survive choose_action() calls, allowing LARP
+        # to reuse work from earlier turns. OrderedDict gives a bounded LRU cache.
+        self._chance_cache: OrderedDict[tuple[bytes, int], float] = OrderedDict()
+        self._player_cache: OrderedDict[tuple[bytes, int], float] = OrderedDict()
+        self.cache_hits = 0
+
+    def _cache_get(self, cache: OrderedDict, key):
+        value = cache.get(key)
+        if value is not None:
+            cache.move_to_end(key)
+            self.cache_hits += 1
+        return value
+
+    def _cache_set(self, cache: OrderedDict, key, value: float) -> None:
+        cache[key] = value
+        cache.move_to_end(key)
+        while len(cache) > self.cache_size:
+            cache.popitem(last=False)
 
     def choose_action(self, board: np.ndarray) -> int:
         actions = legal_actions(board)
@@ -200,9 +227,13 @@ class ExpectimaxAgent:
         if self.rng.random() < self.epsilon:
             return self.rng.choice(actions)
         self.nodes = 0
-        self._chance_cache.clear()
-        self._player_cache.clear()
-        scored = [(self._player(board, self.depth, a), a) for a in actions]
+        self.cache_hits = 0
+
+        # Iterative deepening leaves a usable shallower result if a future time
+        # budget is introduced, and its earlier passes warm the deeper search.
+        scored = []
+        for current_depth in range(1, self.depth + 1):
+            scored = [(self._player(board, current_depth, a), a) for a in actions]
         best = max(v for v, _ in scored)
         return self.rng.choice([a for v, a in scored if abs(v - best) < 1e-9])
 
@@ -214,13 +245,13 @@ class ExpectimaxAgent:
 
     def _chance(self, board: np.ndarray, depth: int) -> float:
         key = (board.tobytes(), depth)
-        cached = self._chance_cache.get(key)
+        cached = self._cache_get(self._chance_cache, key)
         if cached is not None:
             return cached
         self.nodes += 1
         if depth <= 0:
             result = self.evaluator.expected_spawn_value(board)
-            self._chance_cache[key] = result
+            self._cache_set(self._chance_cache, key, result)
             return result
         empty = np.argwhere(board == 0)
         if len(empty) == 0:
@@ -236,12 +267,12 @@ class ExpectimaxAgent:
             total += 0.1 * self._best_player(board, depth)
             board[r, c] = 0
         result = total / len(empty)
-        self._chance_cache[key] = result
+        self._cache_set(self._chance_cache, key, result)
         return result
 
     def _best_player(self, board: np.ndarray, depth: int) -> float:
         key = (board.tobytes(), depth)
-        cached = self._player_cache.get(key)
+        cached = self._cache_get(self._player_cache, key)
         if cached is not None:
             return cached
         actions = legal_actions(board)
@@ -251,7 +282,7 @@ class ExpectimaxAgent:
             result = self.evaluator.value(board)
         else:
             result = max(self._player(board, depth, a) for a in actions)
-        self._player_cache[key] = result
+        self._cache_set(self._player_cache, key, result)
         return result
 
 
