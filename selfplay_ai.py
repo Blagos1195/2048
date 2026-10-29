@@ -5,6 +5,9 @@ import argparse
 import csv
 import random
 import time
+import os
+from concurrent.futures import ProcessPoolExecutor
+from multiprocessing import shared_memory
 from pathlib import Path
 
 import numpy as np
@@ -186,6 +189,8 @@ class ExpectimaxAgent:
         self.rng = random.Random(seed)
         self.epsilon = float(epsilon)
         self.nodes = 0
+        self._chance_cache: dict[tuple[bytes, int], float] = {}
+        self._player_cache: dict[tuple[bytes, int], float] = {}
 
     def choose_action(self, board: np.ndarray) -> int:
         actions = legal_actions(board)
@@ -194,6 +199,8 @@ class ExpectimaxAgent:
         if self.rng.random() < self.epsilon:
             return self.rng.choice(actions)
         self.nodes = 0
+        self._chance_cache.clear()
+        self._player_cache.clear()
         scored = [(self._player(board, self.depth, a), a) for a in actions]
         best = max(v for v, _ in scored)
         return self.rng.choice([a for v, a in scored if abs(v - best) < 1e-9])
@@ -205,12 +212,20 @@ class ExpectimaxAgent:
         return merge_score / 128.0 + self._chance(moved, depth - 1)
 
     def _chance(self, board: np.ndarray, depth: int) -> float:
+        key = (board.tobytes(), depth)
+        cached = self._chance_cache.get(key)
+        if cached is not None:
+            return cached
         self.nodes += 1
         if depth <= 0:
-            return self.evaluator.expected_spawn_value(board)
+            result = self.evaluator.expected_spawn_value(board)
+            self._chance_cache[key] = result
+            return result
         empty = np.argwhere(board == 0)
         if len(empty) == 0:
-            return self.evaluator.value(board) if can_move(board) else -2.0
+            result = self.evaluator.value(board) if can_move(board) else -2.0
+            self._chance_cache[key] = result
+            return result
         total = 0.0
         for r, c in empty:
             r, c = int(r), int(c)
@@ -219,15 +234,24 @@ class ExpectimaxAgent:
             board[r, c] = 4
             total += 0.1 * self._best_player(board, depth)
             board[r, c] = 0
-        return total / len(empty)
+        result = total / len(empty)
+        self._chance_cache[key] = result
+        return result
 
     def _best_player(self, board: np.ndarray, depth: int) -> float:
+        key = (board.tobytes(), depth)
+        cached = self._player_cache.get(key)
+        if cached is not None:
+            return cached
         actions = legal_actions(board)
         if not actions:
             return -2.0
         if depth <= 0:
-            return self.evaluator.value(board)
-        return max(self._player(board, depth, a) for a in actions)
+            result = self.evaluator.value(board)
+        else:
+            result = max(self._player(board, depth, a) for a in actions)
+        self._player_cache[key] = result
+        return result
 
 
 def play_game(agent: ExpectimaxAgent, seed: int, train: bool = False, max_moves: int = 10000) -> dict:
@@ -270,17 +294,82 @@ def evaluate(evaluator: NTupleValue, games: int = 50, depth: int = 1, seed_start
     }
 
 
+_WORKER_SHM = None
+_WORKER_WEIGHTS = None
+_WORKER_EVALUATOR = None
+_WORKER_DEPTH = 1
+
+
+def _init_parallel_worker(shm_name: str, shape: tuple[int, ...], alpha: float, gamma: float, depth: int):
+    """Attach each worker to one read-only snapshot of the shared learned weights."""
+    global _WORKER_SHM, _WORKER_WEIGHTS, _WORKER_EVALUATOR, _WORKER_DEPTH
+    _WORKER_SHM = shared_memory.SharedMemory(name=shm_name)
+    _WORKER_WEIGHTS = np.ndarray(shape, dtype=np.float32, buffer=_WORKER_SHM.buf)
+    _WORKER_WEIGHTS.flags.writeable = False
+    evaluator = NTupleValue.__new__(NTupleValue)
+    evaluator.weights = _WORKER_WEIGHTS
+    evaluator.alpha = float(alpha)
+    evaluator.gamma = float(gamma)
+    evaluator.rng = np.random.default_rng(1)
+    evaluator.updates = 0
+    _WORKER_EVALUATOR = evaluator
+    _WORKER_DEPTH = int(depth)
+
+
+def _collect_episode(task: tuple[int, float]) -> dict:
+    """Generate one game against the current shared snapshot; learner updates happen in the parent."""
+    seed, epsilon = task
+    game = Game2048(seed)
+    agent = ExpectimaxAgent(_WORKER_EVALUATOR, depth=_WORKER_DEPTH, seed=seed, epsilon=epsilon)
+    transitions = []
+    while can_move(game.board) and game.moves < 10000:
+        state = game.board.copy()
+        action = agent.choose_action(state)
+        moved, gained, terminal = game.step(action)
+        if not moved:
+            if can_move(game.board):
+                raise RuntimeError(f"Agent chose illegal action {ACTION_NAMES[action]}")
+            terminal = True
+        reward = gained / 128.0
+        if terminal:
+            reward -= 2.0
+        transitions.append((state.tobytes(), reward, game.board.tobytes(), terminal))
+    return {
+        "seed": seed, "score": game.score, "max_tile": game.max_tile, "moves": game.moves,
+        "reached_2048": int(game.max_tile >= 2048), "reached_4096": int(game.max_tile >= 4096),
+        "reached_8192": int(game.max_tile >= 8192), "transitions": transitions,
+    }
+
+
+def _apply_collected_episode(evaluator: NTupleValue, transitions: list) -> float:
+    td_abs = 0.0
+    count = 0
+    for state_bytes, reward, next_bytes, terminal in transitions:
+        state = np.frombuffer(state_bytes, dtype=np.uint32).reshape(4, 4)
+        next_state = np.frombuffer(next_bytes, dtype=np.uint32).reshape(4, 4)
+        delta = evaluator.update(state, reward, next_state, terminal)
+        td_abs += abs(delta)
+        count += 1
+    return td_abs / max(count, 1)
+
+
 def train(args: argparse.Namespace) -> None:
     evaluator = NTupleValue(alpha=args.alpha, gamma=args.gamma, seed=args.seed)
     if args.resume:
         evaluator.load(args.resume)
-        print(f"Loaded {args.resume}; learned updates: {evaluator.updates}")
+        print(f"Loaded {args.resume}; learned updates: {evaluator.updates}", flush=True)
     agent = ExpectimaxAgent(evaluator, depth=args.depth, seed=args.seed, epsilon=args.epsilon)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     metrics_path = out / "training.csv"
     mode = "a" if args.resume_metrics else "w"
     write_header = mode == "w" or not metrics_path.exists()
+    workers = args.workers
+    if workers < 1:
+        workers = max(1, min(4, (os.cpu_count() or 2) - 1))
+    workers = min(workers, args.games)
+    print(f"Training with {workers} worker(s); updates are applied centrally in episode order.", flush=True)
+
     with metrics_path.open(mode, newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=["episode", "score", "max_tile", "moves", "epsilon", "td_abs_mean", "updates"])
         if write_header:
@@ -293,39 +382,107 @@ def train(args: argparse.Namespace) -> None:
                 champion.load(existing_best)
                 prior = evaluate(champion, games=args.eval_games, depth=args.eval_depth,
                                  seed_start=args.eval_seed + 7_000_000)
-                best_eval = (prior["avg_score"] + 500.0 * prior["rate_2048"]
-                             + 1000.0 * prior["rate_4096"])
+                best_eval = prior["avg_score"] + 500.0 * prior["rate_2048"] + 1000.0 * prior["rate_4096"]
                 print(f"Existing champion validation quality: {best_eval:.2f}", flush=True)
             except (OSError, ValueError, KeyError) as exc:
                 print(f"Could not validate existing best checkpoint ({exc}); selecting a new one.", flush=True)
-        started = time.time()
-        for episode in range(1, args.games + 1):
-            agent.epsilon = max(args.min_epsilon, args.epsilon * (args.epsilon_decay ** (episode - 1)))
-            result = play_game(agent, args.seed + episode, train=True)
-            writer.writerow({"episode": episode, "score": result["score"], "max_tile": result["max_tile"],
-                             "moves": result["moves"], "epsilon": agent.epsilon,
-                             "td_abs_mean": result["td_abs_mean"], "updates": evaluator.updates})
-            f.flush()
-            if episode % args.log_every == 0 or episode == 1:
-                elapsed = time.time() - started
-                print(f"episode {episode}/{args.games} | score {result['score']} | max {result['max_tile']} | "
-                      f"moves {result['moves']} | epsilon {agent.epsilon:.3f} | "
-                      f"TD updates {evaluator.updates:,} | {elapsed:.1f}s", flush=True)
-            if args.eval_every and episode % args.eval_every == 0:
-                report = evaluate(evaluator, games=args.eval_games, depth=args.eval_depth,
-                                  seed_start=args.eval_seed + episode * args.eval_games)
-                print("EVAL " + " | ".join(f"{k}={v:.3f}" if isinstance(v, float) else f"{k}={v}"
-                                            for k, v in report.items()), flush=True)
-                evaluator.save(out / "latest.npz", {"episode": episode, "evaluation": report})
-                quality = report["avg_score"] + 500.0 * report["rate_2048"] + 1000.0 * report["rate_4096"]
-                if quality > best_eval:
-                    best_eval = quality
-                    evaluator.save(out / "best.npz", {"episode": episode, "evaluation": report})
-                    print(f"New champion saved: {out / 'best.npz'}", flush=True)
-    evaluator.save(out / "latest.npz", {"episodes": args.games})
-    print(f"Training finished. Latest model: {out / 'latest.npz'}")
-    print(f"Best evaluated model: {out / 'best.npz'} (created when an evaluation interval is reached)")
 
+        started = time.time()
+        episode = 0
+        pool = None
+        shm = None
+        try:
+            if workers > 1:
+                shm = shared_memory.SharedMemory(create=True, size=evaluator.weights.nbytes)
+                shared_weights = np.ndarray(evaluator.weights.shape, dtype=np.float32, buffer=shm.buf)
+                shared_weights[:] = evaluator.weights
+                evaluator.weights = shared_weights
+                pool = ProcessPoolExecutor(
+                    max_workers=workers,
+                    initializer=_init_parallel_worker,
+                    initargs=(shm.name, evaluator.weights.shape, args.alpha, args.gamma, args.depth),
+                )
+
+            while episode < args.games:
+                batch_size = 1 if workers == 1 else workers * 2
+                if args.eval_every:
+                    next_eval = ((episode // args.eval_every) + 1) * args.eval_every
+                    batch_size = min(batch_size, next_eval - episode)
+                batch_size = min(batch_size, args.games - episode)
+                tasks = []
+                for offset in range(1, batch_size + 1):
+                    absolute_episode = episode + offset
+                    epsilon = max(args.min_epsilon, args.epsilon * (args.epsilon_decay ** (absolute_episode - 1)))
+                    tasks.append((args.seed + absolute_episode, epsilon))
+
+                if pool is None:
+                    result = play_game(agent, tasks[0][0], train=False)
+                    # Re-run as a transition collector so the same TD update path is used.
+                    collected = _collect_episode_local(evaluator, tasks[0][0], tasks[0][1], args.depth)
+                    result = {k: v for k, v in collected.items() if k != "transitions"}
+                    result["td_abs_mean"] = _apply_collected_episode(evaluator, collected["transitions"])
+                    batch = [result]
+                else:
+                    # Workers read a stable shared snapshot; the parent updates weights only after the batch completes.
+                    collected_batch = list(pool.map(_collect_episode, tasks))
+                    batch = []
+                    for collected in collected_batch:
+                        td_mean = _apply_collected_episode(evaluator, collected["transitions"])
+                        batch.append({k: v for k, v in collected.items() if k != "transitions"} | {"td_abs_mean": td_mean})
+
+                for result in batch:
+                    episode += 1
+                    epsilon = max(args.min_epsilon, args.epsilon * (args.epsilon_decay ** (episode - 1)))
+                    writer.writerow({"episode": episode, "score": result["score"], "max_tile": result["max_tile"],
+                                     "moves": result["moves"], "epsilon": epsilon,
+                                     "td_abs_mean": result["td_abs_mean"], "updates": evaluator.updates})
+                    f.flush()
+                    if episode % args.log_every == 0 or episode == 1:
+                        elapsed = time.time() - started
+                        print(f"episode {episode}/{args.games} | score {result['score']} | max {result['max_tile']} | "
+                              f"moves {result['moves']} | epsilon {epsilon:.3f} | workers {workers} | "
+                              f"TD updates {evaluator.updates:,} | {elapsed:.1f}s", flush=True)
+
+                if args.eval_every and episode % args.eval_every == 0:
+                    report = evaluate(evaluator, games=args.eval_games, depth=args.eval_depth,
+                                      seed_start=args.eval_seed + episode * args.eval_games)
+                    print("EVAL " + " | ".join(f"{k}={v:.3f}" if isinstance(v, float) else f"{k}={v}"
+                                                for k, v in report.items()), flush=True)
+                    evaluator.save(out / "latest.npz", {"episode": episode, "evaluation": report, "workers": workers})
+                    quality = report["avg_score"] + 500.0 * report["rate_2048"] + 1000.0 * report["rate_4096"]
+                    if quality > best_eval:
+                        best_eval = quality
+                        evaluator.save(out / "best.npz", {"episode": episode, "evaluation": report, "workers": workers})
+                        print(f"New champion saved: {out / 'best.npz'}", flush=True)
+            evaluator.save(out / "latest.npz", {"episodes": args.games, "workers": workers})
+            print(f"Training finished. Latest model: {out / 'latest.npz'}")
+            print(f"Best evaluated model: {out / 'best.npz'}")
+        finally:
+            if pool is not None:
+                pool.shutdown(wait=True, cancel_futures=True)
+            if shm is not None:
+                shm.close()
+                shm.unlink()
+
+
+def _collect_episode_local(evaluator: NTupleValue, seed: int, epsilon: float, depth: int) -> dict:
+    """Single-process version of the same transition collection path."""
+    game = Game2048(seed)
+    agent = ExpectimaxAgent(evaluator, depth=depth, seed=seed, epsilon=epsilon)
+    transitions = []
+    while can_move(game.board) and game.moves < 10000:
+        state = game.board.copy()
+        action = agent.choose_action(state)
+        moved, gained, terminal = game.step(action)
+        if not moved:
+            if can_move(game.board):
+                raise RuntimeError(f"Agent chose illegal action {ACTION_NAMES[action]}")
+            terminal = True
+        reward = gained / 128.0 - (2.0 if terminal else 0.0)
+        transitions.append((state.tobytes(), reward, game.board.tobytes(), terminal))
+    return {"seed": seed, "score": game.score, "max_tile": game.max_tile, "moves": game.moves,
+            "reached_2048": int(game.max_tile >= 2048), "reached_4096": int(game.max_tile >= 4096),
+            "reached_8192": int(game.max_tile >= 8192), "transitions": transitions}
 
 def evaluate_cli(args: argparse.Namespace) -> None:
     evaluator = NTupleValue(alpha=args.alpha, gamma=args.gamma, seed=args.seed)
@@ -355,6 +512,7 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--out", default="models/selfplay")
     t.add_argument("--resume", default=None)
     t.add_argument("--resume-metrics", action="store_true")
+    t.add_argument("--workers", type=int, default=0, help="parallel self-play workers; 0 auto-selects up to 4")
     t.set_defaults(func=train)
     e = sub.add_parser("evaluate", help="evaluate a saved model on fixed seeds")
     e.add_argument("--model", required=True)
