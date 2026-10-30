@@ -168,3 +168,30 @@ def test_expectimax_iterative_deepening_returns_legal_action():
     assert agent.choose_action(board) in legal_actions(board)
     assert len(agent._chance_cache) + len(agent._player_cache) >= 0
     assert cache_size_before > 0
+
+
+
+def test_training_evaluation_defaults_compare_four_depths():
+    from selfplay_ai import build_parser
+
+    args = build_parser().parse_args(["train", "--games", "1"])
+    assert args.depth == 1
+    assert args.eval_every == 1000
+    assert args.eval_games == 50
+    assert args.eval_depths == [1, 2, 3, 4]
+    assert args.eval_depth == 2
+    assert args.workers == 0
+
+
+def test_multi_depth_evaluation_uses_same_seeds_without_learning():
+    from selfplay_ai import evaluate_depths
+
+    evaluator = NTupleValue(seed=23)
+    before = evaluator.weights.copy()
+    reports = evaluate_depths(evaluator, games=1, depths=[1], seed_start=9876)
+    assert len(reports) == 1
+    assert reports[0]["depth"] == 1
+    assert reports[0]["games"] == 1
+    assert reports[0]["seconds"] >= 0
+    assert np.array_equal(evaluator.weights, before)
+    assert evaluator.updates == 0

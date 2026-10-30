@@ -178,6 +178,32 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
     except (OSError, ValueError, TypeError):
         print("[View] Could not read player_stats.json; starting with fresh stats.")
 
+    # Restore the unfinished board as well as the saved statistics.
+    saved_position = player_stats.pop("current_game", None)
+    if isinstance(saved_position, dict):
+        try:
+            restored_board = np.asarray(saved_position["board"], dtype=np.uint32)
+            if restored_board.shape == (4, 4):
+                game.board = restored_board
+                game.score = max(0, int(saved_position.get("score", 0)))
+                game.moves = max(0, int(saved_position.get("moves", 0)))
+                game.max_tile = max(2, int(saved_position.get("max_tile", int(restored_board.max()))))
+                game_over = not can_move(game.board)
+        except (KeyError, TypeError, ValueError):
+            print("[View] Saved game position was invalid; starting a new game.")
+
+    def save_current_game():
+        player_stats["current_game"] = {
+            "board": game.board.astype(int).tolist(),
+            "score": int(game.score),
+            "moves": int(game.moves),
+            "max_tile": int(game.max_tile),
+        }
+        try:
+            stats_path.write_text(json.dumps(player_stats, indent=2) + "\n", encoding="utf-8")
+        except OSError as exc:
+            print(f"[View] Could not save current game: {exc}")
+
     current_game_recorded = False
     move_plan = {"board": None, "action": None, "busy": False}
     plan_lock = threading.Lock()
@@ -271,6 +297,11 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
         # Only accept a known legal action for the exact current board.
         return legal_actions(board)
 
+    def save_best_score():
+        """Persist the best score immediately, even if the game is closed mid-run."""
+        player_stats["highest_score"] = max(int(player_stats["highest_score"]), int(game.score))
+        save_current_game()
+
     def record_game():
         """Save this game once as the player's achievement."""
         nonlocal current_game_recorded
@@ -302,6 +333,7 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
         text = button_font.render(label, True, (255, 255, 255))
         screen.blit(text, text.get_rect(center=rect.center))
 
+    save_current_game()
     schedule_plan()
     while running:
         width, height = screen.get_size()
@@ -334,6 +366,7 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                 if new_rect.collidepoint(event.pos):
                     record_game()
                     best_score = max(best_score, game.score)
+                    save_best_score()
                     cancel_plan()
                     game = Game2048(seed + int(time.time() * 1000) % 1000000)
                     game_over = False
@@ -364,6 +397,7 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                 elif event.key == pygame.K_r:
                     record_game()
                     best_score = max(best_score, game.score)
+                    save_best_score()
                     cancel_plan()
                     game = Game2048(seed + int(time.time() * 1000) % 1000000)
                     game_over = False
@@ -401,6 +435,7 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                                 if moved:
                                     last_action = ACTION_NAMES[action]
                                     best_score = max(best_score, game.score)
+                                    save_best_score()
                                     game_over = terminal or not can_move(game.board)
                                     if game_over:
                                         cancel_plan()
@@ -421,6 +456,7 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                                 if moved:
                                     last_action = ACTION_NAMES[planned_action]
                                     best_score = max(best_score, game.score)
+                                    save_best_score()
                                     game_over = terminal or not can_move(game.board)
                                     if game_over:
                                         cancel_plan()
@@ -437,6 +473,7 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                 if moved:
                     last_action = ACTION_NAMES[planned_action]
                     best_score = max(best_score, game.score)
+                    save_best_score()
                     game_over = terminal or not can_move(game.board)
                     if game_over:
                         cancel_plan()

@@ -45,7 +45,12 @@ jobs:
           set -euo pipefail
           mkdir -p models/selfplay
           echo "No committed checkpoint found; recovering the saved checkpoint from the previous run artifact."
-          curl --fail --silent --show-error --location -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/12923588285/zip" -o /tmp/selfplay-recovery.zip
+          ARTIFACT_ID=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts" --paginate --jq '.artifacts[] | select(.name == "self-learning-2048-trained-model" and .expired == false) | .id' | head -n 1)
+          if [ -z "$ARTIFACT_ID" ]; then
+            echo "::error::No unexpired self-learning model artifact is available to recover."
+            exit 1
+          fi
+          curl --fail --silent --show-error --location -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" -o /tmp/selfplay-recovery.zip
           unzip -o /tmp/selfplay-recovery.zip -d models/selfplay
           test -s models/selfplay/latest.npz
           test -s models/selfplay/best.npz
@@ -53,24 +58,36 @@ jobs:
           echo "Recovered checkpoint files:"
           ls -lh models/selfplay/latest.npz models/selfplay/best.npz models/selfplay/training.csv
 
-      - name: Train or resume in a runner-safe chunk
+      - name: Train or resume up to 10,000 games total
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p models/selfplay
-          # Reuse the already-running integration-branch training result if it
-          # finished before this main-branch job starts.
-          if [ ! -f models/selfplay/latest.npz ]; then
-            git fetch origin main-selfplay-integration || true
-            if git cat-file -e origin/main-selfplay-integration:models/selfplay/latest.npz 2>/dev/null; then
-              git checkout origin/main-selfplay-integration -- models/selfplay/latest.npz models/selfplay/best.npz models/selfplay/training.csv
-            fi
+          MAX_TOTAL_GAMES=10000
+          COMPLETED_GAMES=0
+
+          if [ -s models/selfplay/latest.npz ]; then
+            COMPLETED_GAMES=$(python - <<'PY'
+          import ast
+          import numpy as np
+          with np.load("models/selfplay/latest.npz", allow_pickle=False) as checkpoint:
+              metadata = ast.literal_eval(str(checkpoint["metadata"].item()))
+          print(int(metadata.get("episode", metadata.get("episodes", 0))))
+          PY
+          )
           fi
-          if [ -f models/selfplay/latest.npz ]; then
-            echo "Resuming from the latest committed checkpoint"
-            python main.py train --games 45000 --depth 1 --workers 3 --eval-every 2500 --eval-games 20 --eval-depth 1 --log-every 100 --out models/selfplay --resume models/selfplay/latest.npz --resume-metrics
+
+          if [ "$COMPLETED_GAMES" -ge "$MAX_TOTAL_GAMES" ]; then
+            echo "Training target already reached: $COMPLETED_GAMES/$MAX_TOTAL_GAMES games. Skipping training."
           else
-            echo "No checkpoint exists; training starts from zero weights"
-            python main.py train --games 45000 --depth 1 --workers 3 --eval-every 2500 --eval-games 20 --eval-depth 1 --log-every 100 --out models/selfplay
+            REMAINING_GAMES=$((MAX_TOTAL_GAMES - COMPLETED_GAMES))
+            echo "Training $REMAINING_GAMES more games ($COMPLETED_GAMES already completed; target $MAX_TOTAL_GAMES)."
+            TRAIN_ARGS=(--games "$REMAINING_GAMES" --depth 1 --workers 0 --eval-every 1000 --eval-games 50 --eval-depths 1 2 3 4 --eval-depth 2 --log-every 100 --out models/selfplay)
+            if [ -s models/selfplay/latest.npz ]; then
+              python main.py train "${TRAIN_ARGS[@]}" --resume models/selfplay/latest.npz --resume-metrics
+            else
+              python main.py train "${TRAIN_ARGS[@]}"
+            fi
           fi
 
       - name: Evaluate best learned checkpoint
@@ -97,6 +114,7 @@ jobs:
           path: |
             models/selfplay/*.npz
             models/selfplay/training.csv
+            models/selfplay/evaluation.csv
           if-no-files-found: warn
           retention-days: 90
 
@@ -106,6 +124,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add models/selfplay/best.npz models/selfplay/latest.npz models/selfplay/training.csv
+          git add models/selfplay/best.npz models/selfplay/latest.npz models/selfplay/training.csv models/selfplay/evaluation.csv
           git commit -m "Update trained self-learning 2048 model" || echo "No model changes to commit"
           git push origin "HEAD:${GITHUB_REF_NAME}"
