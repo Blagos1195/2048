@@ -724,7 +724,7 @@ depth 2 can play better but takes considerably longer.""",
     t.add_argument("--resume-metrics", action="store_true",
                    help="append to the existing training.csv instead of replacing it")
     t.add_argument("--workers", type=int, default=0,
-                   help="parallel game workers; 0 automatically selects up to 4 workers")
+                   help="parallel game workers; 0 automatically uses all available CPU cores")
     t.set_defaults(func=train)
 
     e = sub.add_parser(
