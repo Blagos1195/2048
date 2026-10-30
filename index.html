@@ -13,7 +13,7 @@ h1{font-size:clamp(42px,12vw,64px);line-height:1;margin:0;color:#776e65}.scores{
 p{line-height:1.45;color:#776e65}.controls{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
 button{border:0;border-radius:6px;background:#8f7a66;color:white;padding:11px 14px;font-weight:700;font-size:14px;cursor:pointer}
 button.secondary{background:#bbada0}button:disabled{opacity:.5;cursor:wait}
-#board{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:repeat(4,minmax(0,1fr));gap:9px;background:#bbada0;padding:9px;border-radius:8px;width:100%;aspect-ratio:1;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
+#board{position:relative;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:repeat(4,minmax(0,1fr));gap:9px;background:#bbada0;padding:9px;border-radius:8px;width:100%;aspect-ratio:1;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
 .tile{display:flex;align-items:center;justify-content:center;border-radius:5px;background:#cdc1b4;color:#776e65;font-weight:800;font-size:clamp(22px,7vw,36px);min-width:0;min-height:0;overflow:hidden;white-space:nowrap}
 .t2{background:#eee4da}.t4{background:#ede0c8}.t8{background:#f2b179;color:white}.t16{background:#f59563;color:white}.t32{background:#f67c5f;color:white}.t64{background:#f65e3b;color:white}.t128,.t256,.t512{background:#edcf72;color:white;font-size:clamp(18px,5vw,29px)}.t1024,.t2048,.t4096{background:#edc53f;color:white;font-size:clamp(15px,4.5vw,25px)}
 #status{min-height:24px;font-size:13px;color:#776e65;margin-top:10px;text-align:center}.bottom{position:relative;min-height:34px;display:flex;align-items:center;justify-content:space-between}.tells{display:flex;align-items:center;gap:5px;position:absolute;right:0;bottom:2px}.tell{width:28px;height:30px;border:0;background:transparent;padding:0;display:grid;place-items:center;touch-action:manipulation}.tell i{display:block;width:4px;height:4px;border-radius:50%;background:#ddd5ca}.tell.active i{background:#82796f}.tell.ready i{background:#b4aa9b}.tell.ready.active i{background:#6e9b69}.overlay{display:none;position:fixed;inset:0;background:#0005;align-items:center;justify-content:center;padding:16px;z-index:5}.overlay.open{display:flex}.panel{width:min(100%,320px);background:#faf8ef;border:2px solid #bbada0;border-radius:10px;padding:18px;color:#776e65;box-shadow:0 8px 30px #0003}.panel-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}.panel h2{font-size:17px;margin:0}.panel button{padding:7px 11px}.panel p{margin:9px 0}.panel select{font:inherit;padding:8px;border:1px solid #bbada0;border-radius:5px;background:white;color:#514b45;width:100%}
@@ -66,13 +66,32 @@ async function performMove(action){
  if(!currentState||busy||currentState.over)return false;
  const result=calculateMove(currentState,action);if(!result)return false;
  busy=true;ready=false;plannedAction=null;planBoardKey=null;updateTells();
- const cells=[...boardEl.children],rects=cells.map(el=>el.getBoundingClientRect()),animations=[];
- for(const move of result.records){const [fr,fc]=move.from,[tr,tc]=move.to,index=fr*4+fc,el=cells[index];if(!el)continue;const dx=rects[tr*4+tc].left-rects[index].left,dy=rects[tr*4+tc].top-rects[index].top;if(dx||dy)animations.push(el.animate([{transform:"translate3d(0,0,0)"},{transform:"translate3d("+dx+"px,"+dy+"px,0)"}],{duration:160,easing:"cubic-bezier(0.2,0.75,0.25,1)",fill:"forwards"}));}
+ const cells=[...boardEl.children],rects=cells.map(el=>el.getBoundingClientRect()),boardRect=boardEl.getBoundingClientRect();
+ const backgrounds=document.createDocumentFragment();
+ for(let i=0;i<16;i++){const cell=document.createElement("div");cell.className="tile";backgrounds.appendChild(cell);}
+ boardEl.replaceChildren(backgrounds);
+ const animations=[];
+ for(const move of result.records){
+  const [fr,fc]=move.from,[tr,tc]=move.to,index=fr*4+fc,el=document.createElement("div");
+  const source=cells[index];if(!source)continue;
+  const sourceRect=rects[index],targetRect=rects[tr*4+tc];
+  el.className="tile t"+(Number(source.textContent)||0)+" moving-tile";
+  el.textContent=source.textContent;
+  el.style.position="absolute";el.style.left=(sourceRect.left-boardRect.left)+"px";el.style.top=(sourceRect.top-boardRect.top)+"px";
+  el.style.width=sourceRect.width+"px";el.style.height=sourceRect.height+"px";el.style.zIndex="2";el.style.pointerEvents="none";
+  boardEl.appendChild(el);
+  const dx=targetRect.left-sourceRect.left,dy=targetRect.top-sourceRect.top;
+  if(dx||dy)animations.push(el.animate(
+   [{transform:"translate3d(0,0,0)"},{transform:"translate3d("+dx+"px,"+dy+"px,0)"}],
+   {duration:105,easing:"linear",fill:"forwards"}
+  ));
+ }
  if(animations.length)await Promise.all(animations.map(a=>a.finished.catch(()=>{})));
- await sleep(20);
- const board=result.board;spawnInto(board);const next={board,score:currentState.score+result.gained,moves:currentState.moves+1,maxTile:Math.max(...board.flat()),over:false};
+ const board=result.board,spawned=spawnInto(board);
+ const next={board,score:currentState.score+result.gained,moves:currentState.moves+1,maxTile:Math.max(...board.flat()),over:false};
  next.over=!board.some((row,r)=>row.some((v,c)=>!v||(r<3&&v===board[r+1][c])||(c<3&&v===board[r][c+1])));
  ready=true;busy=false;renderState(next);
+ if(spawned){const tile=boardEl.children[spawned.r*4+spawned.c];if(tile)tile.animate([{transform:"scale(.65)",opacity:.35},{transform:"scale(1)",opacity:1}],{duration:95,easing:"ease-out"});}
  if(engineReady){try{await pythonState("browser_set_state",JSON.stringify(board)+","+next.score+","+next.moves);}catch(e){console.error(e);}}
  return true;
 }
