@@ -14,10 +14,10 @@ p{line-height:1.45;color:#776e65}.controls{display:flex;gap:8px;flex-wrap:wrap;m
 button{border:0;border-radius:6px;background:#8f7a66;color:white;padding:11px 14px;font-weight:700;font-size:14px;cursor:pointer}
 button.secondary{background:#bbada0}button:disabled{opacity:.5;cursor:wait}
 #board{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:repeat(4,minmax(0,1fr));gap:9px;background:#bbada0;padding:9px;border-radius:8px;width:100%;aspect-ratio:1;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
-.tile{animation:tile-pop .12s ease-out;display:flex;align-items:center;justify-content:center;border-radius:5px;background:#cdc1b4;color:#776e65;font-weight:800;font-size:clamp(22px,7vw,36px);min-width:0;min-height:0;overflow:hidden;white-space:nowrap}
+.tile{display:flex;align-items:center;justify-content:center;border-radius:5px;background:#cdc1b4;color:#776e65;font-weight:800;font-size:clamp(22px,7vw,36px);min-width:0;min-height:0;overflow:hidden;white-space:nowrap}
 .t2{background:#eee4da}.t4{background:#ede0c8}.t8{background:#f2b179;color:white}.t16{background:#f59563;color:white}.t32{background:#f67c5f;color:white}.t64{background:#f65e3b;color:white}.t128,.t256,.t512{background:#edcf72;color:white;font-size:clamp(18px,5vw,29px)}.t1024,.t2048,.t4096{background:#edc53f;color:white;font-size:clamp(15px,4.5vw,25px)}
 #status{min-height:24px;font-size:13px;color:#776e65;margin-top:10px;text-align:center}.bottom{position:relative;min-height:34px;display:flex;align-items:center;justify-content:space-between}.tells{display:flex;align-items:center;gap:5px;position:absolute;right:0;bottom:2px}.tell{width:28px;height:30px;border:0;background:transparent;padding:0;display:grid;place-items:center;touch-action:manipulation}.tell i{display:block;width:4px;height:4px;border-radius:50%;background:#ddd5ca}.tell.active i{background:#82796f}.tell.ready i{background:#b4aa9b}.tell.ready.active i{background:#6e9b69}.overlay{display:none;position:fixed;inset:0;background:#0005;align-items:center;justify-content:center;padding:16px;z-index:5}.overlay.open{display:flex}.panel{width:min(100%,320px);background:#faf8ef;border:2px solid #bbada0;border-radius:10px;padding:18px;color:#776e65;box-shadow:0 8px 30px #0003}.panel-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}.panel h2{font-size:17px;margin:0}.panel button{padding:7px 11px}.panel p{margin:9px 0}.panel select{font:inherit;padding:8px;border:1px solid #bbada0;border-radius:5px;background:white;color:#514b45;width:100%}
-@keyframes tile-pop{from{transform:scale(.88);opacity:.72}to{transform:scale(1);opacity:1}}@media(max-width:360px){#board{gap:6px;padding:6px}.tile{font-size:22px}}
+@media(max-width:360px){#board{gap:6px;padding:6px}.tile{font-size:22px}}
 </style>
 <script src="./coi-serviceworker.js"></script>
 </head>
@@ -37,18 +37,45 @@ const buttons=[...document.querySelectorAll("button")];let pyodide=null,ready=tr
 const say=s=>statusEl.textContent=s;
 function saveGame(){if(!currentState)return;try{localStorage.setItem("2048-current-game",JSON.stringify({board:currentState.board,score:currentState.score,moves:currentState.moves,maxTile:currentState.maxTile,over:currentState.over,wonShown,keepPlaying}));}catch(e){}}
 function draw(state){
- const oldTiles=[...boardEl.children].map((el,index)=>({value:Number(el.textContent)||0,rect:el.getBoundingClientRect(),used:false,index}));
- currentState=state;boardEl.innerHTML="";
- state.board.flat().forEach(v=>{
-  const cell=document.createElement("div");cell.className="tile "+(v?"t"+v:"");cell.textContent=v||"";boardEl.appendChild(cell);
-  if(v){
-   const source=oldTiles.filter(t=>!t.used&&t.value===v).sort((x,y)=>x.index-y.index)[0];
-   if(source){source.used=true;const target=cell.getBoundingClientRect();const dx=source.rect.left-target.left,dy=source.rect.top-target.top;
-    if(dx||dy){cell.style.transition="none";cell.style.transform="translate("+dx+"px,"+dy+"px)";requestAnimationFrame(()=>requestAnimationFrame(()=>{cell.style.transition="transform 110ms ease-out";cell.style.transform="translate(0,0)";}));}
-   }else{cell.style.animation="tile-pop 130ms ease-out";}
-  }
+ const oldTiles=[...boardEl.children].map((el,index)=>({
+  value:Number(el.textContent)||0,
+  x:index%4,y:Math.floor(index/4),
+  rect:el.getBoundingClientRect(),used:false
+ }));
+ currentState=state;
+ const fragment=document.createDocumentFragment(),targets=[];
+ state.board.flat().forEach((value,index)=>{
+  const cell=document.createElement("div");
+  cell.className="tile "+(value?"t"+value:"");
+  cell.textContent=value||"";
+  fragment.appendChild(cell);
+  if(value)targets.push({value,x:index%4,y:Math.floor(index/4),cell});
  });
- scoreEl.textContent=state.score.toLocaleString();best=Math.max(best,state.score);highestScore=Math.max(highestScore,state.score);highestTile=Math.max(highestTile,state.maxTile||2);bestEl.textContent=Math.max(best,highestScore).toLocaleString();
+ boardEl.replaceChildren(fragment);
+ for(const target of targets){
+  let source=null,distance=Infinity;
+  for(const candidate of oldTiles){
+   if(candidate.used||candidate.value!==target.value)continue;
+   const d=Math.abs(candidate.x-target.x)+Math.abs(candidate.y-target.y);
+   if(d<distance){source=candidate;distance=d;}
+  }
+  if(!source)continue;
+  source.used=true;
+  const rect=target.cell.getBoundingClientRect();
+  const dx=source.rect.left-rect.left,dy=source.rect.top-rect.top;
+  if(!dx&&!dy)continue;
+  target.cell.style.transition="none";
+  target.cell.style.transform="translate3d("+dx+"px,"+dy+"px,0)";
+  target.cell.getBoundingClientRect();
+  requestAnimationFrame(()=>{
+   target.cell.style.transition="transform 150ms ease-in-out";
+   target.cell.style.transform="translate3d(0,0,0)";
+  });
+ }
+ scoreEl.textContent=state.score.toLocaleString();
+ best=Math.max(best,state.score);highestScore=Math.max(highestScore,state.score);
+ highestTile=Math.max(highestTile,state.maxTile||2);
+ bestEl.textContent=Math.max(best,highestScore).toLocaleString();
  try{localStorage.setItem("2048-player-stats",JSON.stringify({gamesPlayed:gameCount,totalScore,highestScore,highestTile}));}catch(e){}
  saveGame();if(state.over){recordGame();stopAuto();say("Game over. Start a new game to play again.");}updateTells();
 }
