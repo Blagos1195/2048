@@ -656,7 +656,10 @@ def benchmark(evaluator: NTupleValue, games: int, depths: list[int], seed_start:
 def evaluate_cli(args: argparse.Namespace) -> None:
     evaluator = NTupleValue(seed=args.seed)
     evaluator.load(args.model)
-    report = evaluate(evaluator, games=args.games, depth=args.depth, seed_start=args.seed)
+    workers = args.workers if args.workers > 0 else (os.cpu_count() or 1)
+    report = evaluate_depths_parallel(
+        evaluator, games=args.games, depths=[args.depth], seed_start=args.seed, workers=workers,
+    )[0]
     for key, value in report.items():
         print(f"{key}: {value}")
 
@@ -741,6 +744,8 @@ depth 2 can play better but takes considerably longer.""",
                    help="search depth; higher can play better but is much slower")
     e.add_argument("--seed", type=int, default=2_000_000,
                    help="starting random seed for repeatable test games")
+    e.add_argument("--workers", type=int, default=0,
+                   help="parallel evaluation workers; 0 automatically uses all available CPU cores")
     e.set_defaults(func=evaluate_cli)
 
     b = sub.add_parser(
@@ -772,7 +777,7 @@ def main() -> None:
         raise SystemExit("--eval-games must be >= 1")
     if args.command == "train" and args.eval_every < 0:
         raise SystemExit("--eval-every must be >= 0")
-    if args.command == "train" and args.workers < 0:
+    if args.command in ("train", "evaluate") and args.workers < 0:
         raise SystemExit("--workers must be >= 0")
     if args.command == "benchmark" and (args.games < 1 or not args.depths or min(args.depths) < 1):
         raise SystemExit("benchmark games and search depths must be >= 1")
