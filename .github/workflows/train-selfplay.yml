@@ -50,8 +50,10 @@ jobs:
           test -s models/selfplay/latest.npz
           test -s models/selfplay/best.npz
           test -s models/selfplay/training.csv
+            models/selfplay/evaluation.csv
           echo "Recovered checkpoint files:"
           ls -lh models/selfplay/latest.npz models/selfplay/best.npz models/selfplay/training.csv
+            models/selfplay/evaluation.csv
 
       - name: Train or resume in a runner-safe chunk
         shell: bash
@@ -63,14 +65,15 @@ jobs:
             git fetch origin main-selfplay-integration || true
             if git cat-file -e origin/main-selfplay-integration:models/selfplay/latest.npz 2>/dev/null; then
               git checkout origin/main-selfplay-integration -- models/selfplay/latest.npz models/selfplay/best.npz models/selfplay/training.csv
+            models/selfplay/evaluation.csv
             fi
           fi
           if [ -f models/selfplay/latest.npz ]; then
             echo "Resuming from the latest committed checkpoint"
-            python main.py train --games 45000 --depth 1 --workers 3 --eval-every 2500 --eval-games 20 --eval-depth 1 --log-every 100 --out models/selfplay --resume models/selfplay/latest.npz --resume-metrics
+            python main.py train --games 45000 --depth 1 --workers 0 --eval-every 1000 --eval-games 50 --eval-depths 1 2 3 4 --eval-depth 2 --log-every 100 --out models/selfplay --resume models/selfplay/latest.npz --resume-metrics
           else
             echo "No checkpoint exists; training starts from zero weights"
-            python main.py train --games 45000 --depth 1 --workers 3 --eval-every 2500 --eval-games 20 --eval-depth 1 --log-every 100 --out models/selfplay
+            python main.py train --games 45000 --depth 1 --workers 0 --eval-every 1000 --eval-games 50 --eval-depths 1 2 3 4 --eval-depth 2 --log-every 100 --out models/selfplay
           fi
 
       - name: Evaluate best learned checkpoint
@@ -97,6 +100,7 @@ jobs:
           path: |
             models/selfplay/*.npz
             models/selfplay/training.csv
+            models/selfplay/evaluation.csv
           if-no-files-found: warn
           retention-days: 90
 
@@ -106,6 +110,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add models/selfplay/best.npz models/selfplay/latest.npz models/selfplay/training.csv
+          git add models/selfplay/best.npz models/selfplay/latest.npz models/selfplay/training.csv models/selfplay/evaluation.csv
+            models/selfplay/evaluation.csv
           git commit -m "Update trained self-learning 2048 model" || echo "No model changes to commit"
           git push origin "HEAD:${GITHUB_REF_NAME}"
