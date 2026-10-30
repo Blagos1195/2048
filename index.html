@@ -142,6 +142,11 @@ _browser_agent = selfplay_ai.ExpectimaxAgent(_browser_evaluator, depth=1, seed=2
 _browser_game = selfplay_ai.Game2048()
 def _browser_state():
     return json.dumps({"board": _browser_game.board.astype(int).tolist(), "score": int(_browser_game.score), "moves": int(_browser_game.moves), "maxTile": int(_browser_game.max_tile), "over": not selfplay_ai.can_move(_browser_game.board)})
+def browser_set_state(board, score, moves):
+    _browser_game.board = selfplay_ai.np.array(board, dtype=selfplay_ai.np.uint32)
+    _browser_game.score = int(score)
+    _browser_game.moves = int(moves)
+    return _browser_state()
 def browser_new_game():
     global _browser_game
     _browser_game = selfplay_ai.Game2048()
