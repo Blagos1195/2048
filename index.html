@@ -14,10 +14,10 @@ p{line-height:1.45;color:#776e65}.controls{display:flex;gap:8px;flex-wrap:wrap;m
 button{border:0;border-radius:6px;background:#8f7a66;color:white;padding:11px 14px;font-weight:700;font-size:14px;cursor:pointer}
 button.secondary{background:#bbada0}button:disabled{opacity:.5;cursor:wait}
 #board{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:repeat(4,minmax(0,1fr));gap:9px;background:#bbada0;padding:9px;border-radius:8px;width:100%;aspect-ratio:1;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
-.tile{display:flex;align-items:center;justify-content:center;border-radius:5px;background:#cdc1b4;color:#776e65;font-weight:800;font-size:clamp(22px,7vw,36px);min-width:0;min-height:0;overflow:hidden;white-space:nowrap}
+.tile{animation:tile-pop .12s ease-out;display:flex;align-items:center;justify-content:center;border-radius:5px;background:#cdc1b4;color:#776e65;font-weight:800;font-size:clamp(22px,7vw,36px);min-width:0;min-height:0;overflow:hidden;white-space:nowrap}
 .t2{background:#eee4da}.t4{background:#ede0c8}.t8{background:#f2b179;color:white}.t16{background:#f59563;color:white}.t32{background:#f67c5f;color:white}.t64{background:#f65e3b;color:white}.t128,.t256,.t512{background:#edcf72;color:white;font-size:clamp(18px,5vw,29px)}.t1024,.t2048,.t4096{background:#edc53f;color:white;font-size:clamp(15px,4.5vw,25px)}
 #status{min-height:24px;font-size:13px;color:#776e65;margin-top:10px;text-align:center}.bottom{position:relative;min-height:34px;display:flex;align-items:center;justify-content:space-between}.tells{display:flex;align-items:center;gap:5px;position:absolute;right:0;bottom:2px}.tell{width:28px;height:30px;border:0;background:transparent;padding:0;display:grid;place-items:center;touch-action:manipulation}.tell i{display:block;width:4px;height:4px;border-radius:50%;background:#ddd5ca}.tell.active i{background:#82796f}.tell.ready i{background:#b4aa9b}.tell.ready.active i{background:#6e9b69}.overlay{display:none;position:fixed;inset:0;background:#0005;align-items:center;justify-content:center;padding:16px;z-index:5}.overlay.open{display:flex}.panel{width:min(100%,320px);background:#faf8ef;border:2px solid #bbada0;border-radius:10px;padding:18px;color:#776e65;box-shadow:0 8px 30px #0003}.panel-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}.panel h2{font-size:17px;margin:0}.panel button{padding:7px 11px}.panel p{margin:9px 0}.panel select{font:inherit;padding:8px;border:1px solid #bbada0;border-radius:5px;background:white;color:#514b45;width:100%}
-@media(max-width:360px){#board{gap:6px;padding:6px}.tile{font-size:22px}}
+@keyframes tile-pop{from{transform:scale(.88);opacity:.72}to{transform:scale(1);opacity:1}}@media(max-width:360px){#board{gap:6px;padding:6px}.tile{font-size:22px}}
 </style>
 <script src="./coi-serviceworker.js"></script>
 </head>
@@ -27,7 +27,7 @@ button.secondary{background:#bbada0}button:disabled{opacity:.5;cursor:wait}
 <div id="board" aria-label="2048 game board"></div>
 <div class="controls"><button id="new">New Game</button><button id="stats" class="secondary">Your Stats</button></div>
 <div class="bottom"><div id="status">Loading game…</div><div class="tells" aria-label="Game status"><button class="tell" id="tell-ai" aria-label="Control mode"><i></i></button><button class="tell" id="tell-ready" aria-label="Make one automated move"><i></i></button><button class="tell" id="tell-auto" aria-label="Automatic play"><i></i></button></div></div>
-<div class="overlay" id="overlay"><section class="panel"><div class="panel-head"><h2 id="panel-title">2048 STATS</h2><button id="close" class="secondary" aria-label="Close">×</button></div><div id="stats-content"><p>Games played: 0</p><p>Highest score: 0</p><p>Average score: 0</p><p>Highest tile: 2</p></div><div id="depth-setting" hidden><p>Search depth</p><select id="depth"><option value="1">1 · Fast</option><option value="2">2 · Balanced</option><option value="3">3 · Slower</option></select><p style="font-size:12px">Higher depth searches further ahead but can take much longer, especially on mobile.</p></div></section></div>
+<div class="overlay" id="game-overlay"><section class="panel"><h2 id="game-title">2048</h2><div id="game-message"></div><div class="controls"><button id="game-primary">Continue</button><button id="game-secondary" class="secondary">New Game</button></div></section></div><div class="overlay" id="overlay"><section class="panel"><div class="panel-head"><h2 id="panel-title">2048 STATS</h2><button id="close" class="secondary" aria-label="Close">×</button></div><div id="stats-content"><p>Games played: 0</p><p>Highest score: 0</p><p>Average score: 0</p><p>Highest tile: 2</p></div><div id="depth-setting" hidden><p>Search depth</p><select id="depth"><option value="1">1 · Fast</option><option value="2">2 · Balanced</option><option value="3">3 · Slower</option></select><p style="font-size:12px">Higher depth searches further ahead but can take much longer, especially on mobile.</p></div></section></div>
 <p style="font-size:12px;margin-top:16px;color:#8b8178;text-align:center">Use the arrow keys or swipe to move.</p>
 </main>
 <script type="module">
@@ -35,7 +35,7 @@ import { loadPyodide } from "https://cdn.jsdelivr.net/pyodide/v0.27.7/full/pyodi
 const $=id=>document.getElementById(id);const boardEl=document.getElementById("board"),scoreEl=document.getElementById("score"),bestEl=document.getElementById("best"),statusEl=document.getElementById("status");
 const buttons=[...document.querySelectorAll("button")];let pyodide=null,ready=true,engineReady=false,busy=false,best=0,touchStart=null,aiControl=false,autoMove=false,gameCount=0,totalScore=0,highestScore=0,highestTile=2,depth=1,titleTaps=0,titleTapTimer=null;
 const say=s=>statusEl.textContent=s;
-function draw(state){currentState=state;boardEl.innerHTML="";state.board.flat().forEach(v=>{const cell=document.createElement("div");cell.className="tile "+(v?"t"+v:"");cell.textContent=v||"";boardEl.appendChild(cell);});scoreEl.textContent=state.score.toLocaleString();best=Math.max(best,state.score);bestEl.textContent=Math.max(best,highestScore).toLocaleString();if(state.over){recordGame();stopAuto();say("Game over. Start a new game to play again.");}updateTells();}
+function draw(state){currentState=state;boardEl.innerHTML="";state.board.flat().forEach(v=>{const cell=document.createElement("div");cell.className="tile "+(v?"t"+v:"");cell.textContent=v||"";boardEl.appendChild(cell);});scoreEl.textContent=state.score.toLocaleString();best=Math.max(best,state.score);highestScore=Math.max(highestScore,state.score);bestEl.textContent=Math.max(best,highestScore).toLocaleString();try{localStorage.setItem("2048-player-stats",JSON.stringify({gamesPlayed:gameCount,totalScore,highestScore,highestTile}));}catch(e){}if(state.over){recordGame();stopAuto();say("Game over. Start a new game to play again.");}updateTells();}
 async function pythonState(fn,arg){return JSON.parse(await pyodide.runPythonAsync(arg===undefined?fn+"()":fn+"("+arg+")"));}
 function spawnTile(board){const empty=[];for(let r=0;r<4;r++)for(let c=0;c<4;c++)if(!board[r][c])empty.push([r,c]);if(!empty.length)return;const [r,c]=empty[Math.floor(Math.random()*empty.length)];board[r][c]=Math.random()<0.1?4:2;}
 function jsMove(state,action){
@@ -58,7 +58,7 @@ const keyMap={ArrowLeft:0,ArrowDown:1,ArrowRight:2,ArrowUp:3};
 boardEl.addEventListener("pointerdown",e=>{touchStart=[e.clientX,e.clientY];});
 boardEl.addEventListener("pointerup",e=>{if(!touchStart)return;const dx=e.clientX-touchStart[0],dy=e.clientY-touchStart[1];touchStart=null;if(Math.max(Math.abs(dx),Math.abs(dy))<20)return;if(aiControl){aiMove(true);return;}humanMove(Math.abs(dx)>Math.abs(dy)?(dx>0?2:0):(dy<0?3:1));});
 
-let autoTimer=null,currentState=null,recorded=false,plannedAction=null,planning=false,planBoardKey=null;
+let autoTimer=null,currentState=null,recorded=false,plannedAction=null,planning=false,planBoardKey=null,wonShown=false,keepPlaying=false;
 try{const saved=JSON.parse(localStorage.getItem("2048-player-stats")||"{}");gameCount=Number(saved.gamesPlayed)||0;totalScore=Number(saved.totalScore)||0;highestScore=Number(saved.highestScore)||0;highestTile=Number(saved.highestTile)||2;best=highestScore;}catch(e){}
 function updateTells(){
   $("tell-ai").classList.toggle("active",aiControl);
@@ -69,9 +69,20 @@ function updateTells(){
 }
 function stopAuto(){autoMove=false;clearTimeout(autoTimer);updateTells();}
 function recordGame(){if(recorded||!currentState||!currentState.moves)return;recorded=true;gameCount++;totalScore+=currentState.score;highestScore=Math.max(highestScore,currentState.score);highestTile=Math.max(highestTile,currentState.maxTile);try{localStorage.setItem("2048-player-stats",JSON.stringify({gamesPlayed:gameCount,totalScore,highestScore,highestTile}));}catch(e){}}
+function showGameOverlay(title,message,primary,secondary,primaryAction,secondaryAction){
+ $("game-title").textContent=title;$("game-message").textContent=message;
+ $("game-primary").textContent=primary;$("game-secondary").textContent=secondary;
+ $("game-primary").onclick=()=>{$("game-overlay").classList.remove("open");primaryAction();};
+ $("game-secondary").onclick=()=>{$("game-overlay").classList.remove("open");secondaryAction();};
+ $("game-overlay").classList.add("open");
+}
 function renderState(state){
  currentState=state;draw(state);bestEl.textContent=Math.max(best,highestScore).toLocaleString();
- if(state.over){recordGame();stopAuto();}
+ if(state.maxTile>=2048&&!wonShown&&!keepPlaying){
+  wonShown=true;stopAuto();
+  showGameOverlay("You win!","You reached 2048.","Keep playing","New Game",()=>{keepPlaying=true;say("Keep going!");if(aiControl)planNextMove();},()=>startNewGame(true));
+ }
+ if(state.over){recordGame();stopAuto();showGameOverlay("Game over!","Final score: "+state.score.toLocaleString(),"New Game","Close",()=>startNewGame(true),()=>{});}
 }
 async function planNextMove(){
  if(!engineReady||!ready||!aiControl||busy||planning||currentState?.over)return;
@@ -101,8 +112,13 @@ async function aiMove(automatic=false){
  finally{busy=false;updateTells();if(aiControl&&!currentState?.over)planNextMove();}
 }
 function scheduleAuto(){clearTimeout(autoTimer);if(!aiControl||!autoMove)return;autoTimer=setTimeout(async()=>{await aiMove(true);if(aiControl&&autoMove&&!currentState?.over)scheduleAuto();},100);}
-async function startNewGame(){
- if(!ready||busy)return;recordGame();stopAuto();aiControl=false;plannedAction=null;planBoardKey=null;recorded=false;
+async function startNewGame(confirmed=false){
+ if(!ready||busy)return;
+ if(!confirmed&&currentState&&currentState.moves>0&&!currentState.over){
+  showGameOverlay("Start a new game?","Your current game will be ended.","Restart","Cancel",()=>startNewGame(true),()=>{});
+  return;
+ }
+ recordGame();stopAuto();aiControl=false;plannedAction=null;planBoardKey=null;recorded=false;wonShown=false;keepPlaying=false;
  if(engineReady)renderState(await pythonState("browser_new_game"));
  else {const board=Array.from({length:4},()=>[0,0,0,0]);spawnTile(board);spawnTile(board);renderState({board,score:0,moves:0,maxTile:Math.max(...board.flat()),over:false});}
  say(engineReady?"Ready.":"Game ready. AI loading…");
@@ -115,7 +131,7 @@ function openPanel(settings=false){
 }
 
 
-document.getElementById("new").addEventListener("click",startNewGame);
+document.getElementById("new").addEventListener("click",()=>startNewGame(false));
 document.getElementById("stats").addEventListener("click",()=>openPanel(false));
 document.getElementById("close").addEventListener("click",()=>document.getElementById("overlay").classList.remove("open"));
 document.getElementById("overlay").addEventListener("click",e=>{if(e.target.id==="overlay")e.currentTarget.classList.remove("open");});
@@ -124,7 +140,7 @@ document.getElementById("tell-ai").addEventListener("click",()=>{aiControl=!aiCo
 document.getElementById("tell-ready").addEventListener("click",()=>aiMove(false));
 document.getElementById("tell-auto").addEventListener("click",()=>{aiControl=true;autoMove=!autoMove;updateTells();if(autoMove)scheduleAuto();else clearTimeout(autoTimer);if(aiControl)planNextMove();});
 document.querySelector("h1").addEventListener("click",()=>{titleTaps++;clearTimeout(titleTapTimer);titleTapTimer=setTimeout(()=>{if(titleTaps>=3)openPanel(true);titleTaps=0;},500);});
-window.addEventListener("keydown",e=>{if(e.key.toLowerCase()==="d"){openPanel(true);e.preventDefault();return;}if(e.key==="F8"||e.key==="`"){aiControl=!aiControl;if(!aiControl){stopAuto();plannedAction=null;planBoardKey=null;}updateTells();if(aiControl)planNextMove();e.preventDefault();return;}if(e.key==="F7"){aiControl=true;autoMove=!autoMove;updateTells();if(autoMove)scheduleAuto();else clearTimeout(autoTimer);planNextMove();e.preventDefault();return;}if(aiControl){e.preventDefault();aiMove(true);return;}if(keyMap[e.key]!==undefined){e.preventDefault();humanMove(keyMap[e.key]);}});
+window.addEventListener("keydown",e=>{if($("game-overlay").classList.contains("open"))return;if(e.key.toLowerCase()==="r"){startNewGame(false);e.preventDefault();return;}if(e.key.toLowerCase()==="d"){openPanel(true);e.preventDefault();return;}if(e.key==="F8"||e.key==="`"){aiControl=!aiControl;if(!aiControl){stopAuto();plannedAction=null;planBoardKey=null;}updateTells();if(aiControl)planNextMove();e.preventDefault();return;}if(e.key==="F7"){aiControl=true;autoMove=!autoMove;updateTells();if(autoMove)scheduleAuto();else clearTimeout(autoTimer);planNextMove();e.preventDefault();return;}if(aiControl){e.preventDefault();aiMove(true);return;}if(keyMap[e.key]!==undefined){e.preventDefault();humanMove(keyMap[e.key]);}});
 
 async function start(){try{
  renderState({board:[[0,0,0,0],[0,0,0,0],[0,0,2,0],[0,0,0,2]],score:0,moves:0,maxTile:2,over:false});say("Game ready. AI loading…");buttons.forEach(b=>b.disabled=false);
