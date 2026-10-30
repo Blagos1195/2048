@@ -1,8 +1,18 @@
 /*! coi-serviceworker v0.1.7 - Guido Zuidhof and contributors, licensed under MIT */
 let coepCredentialless = false;
 if (typeof window === "undefined") {
-    self.addEventListener("install", () => self.skipWaiting());
-    self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
+    self.addEventListener("install", (event) => {
+        event.waitUntil((async () => {
+            const cache = await caches.open("2048-offline-v1");
+            await cache.addAll(["./", "./index.html", "./selfplay_ai.py", "./models/selfplay/best.npz"]);
+            await self.skipWaiting();
+        })());
+    });
+    self.addEventListener("activate", (event) => event.waitUntil((async () => {
+        const keys = await caches.keys();
+        await Promise.all(keys.filter(key => key.startsWith("2048-offline-") && key !== "2048-offline-v1").map(key => caches.delete(key)));
+        await self.clients.claim();
+    })()));
     self.addEventListener("message", (ev) => {
         if (!ev.data) return;
         if (ev.data.type === "deregister") {
@@ -21,8 +31,18 @@ if (typeof window === "undefined") {
             headers.set("Cross-Origin-Embedder-Policy", coepCredentialless ? "credentialless" : "require-corp");
             if (!coepCredentialless) headers.set("Cross-Origin-Resource-Policy", "cross-origin");
             headers.set("Cross-Origin-Opener-Policy", "same-origin");
-            return new Response(response.body, {status:response.status,statusText:response.statusText,headers});
-        }).catch(error => { console.error(error); throw error; }));
+            const isolated = new Response(response.clone().body, {status:response.status,statusText:response.statusText,headers});
+            if (r.method === "GET" && new URL(r.url).origin === self.location.origin && isolated.ok) {
+                const copy = isolated.clone();
+                event.waitUntil(caches.open("2048-offline-v1").then(cache => cache.put(r, copy)).catch(() => {}));
+            }
+            return isolated;
+        }).catch(async error => {
+            const cached = await caches.match(r);
+            if (cached) return cached;
+            console.error(error);
+            throw error;
+        }));
     });
 } else {
     (() => {
