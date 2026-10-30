@@ -41,3 +41,10 @@ Keep the checkpoint format compatible with `NTupleValue.load()`. The browser sta
 - The browser uses the same Python game logic and NumPy model format.
 - Desktop-only multiprocessing imports are optional so the game module can be imported in WebAssembly.
 - Test model loading and gameplay in current Chrome/Edge and Firefox before treating it as a finished release.
+
+
+## Offline use and saved scores
+
+The browser page caches the game shell, Python game module, and current model checkpoint after a successful online load. Human-playable 2048 can then reopen offline. The Python AI runtime is loaded from the Pyodide CDN, so automated play still requires the runtime and NumPy package to have been loaded while online; the offline cache does not promise a fully offline AI startup.
+
+The browser stores its best score and stats in that browser's local storage. The desktop app stores its stats in `player_stats.json`. These remain separate; there is no cross-device account or score-sync service.
