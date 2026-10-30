@@ -342,7 +342,6 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                 if new_rect.collidepoint(event.pos):
                     record_game()
                     best_score = max(best_score, game.score)
-                                    save_best_score()
                     cancel_plan()
                     game = Game2048(seed + int(time.time() * 1000) % 1000000)
                     game_over = False
@@ -373,6 +372,7 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                 elif event.key == pygame.K_r:
                     record_game()
                     best_score = max(best_score, game.score)
+                    save_best_score()
                     cancel_plan()
                     game = Game2048(seed + int(time.time() * 1000) % 1000000)
                     game_over = False
@@ -410,6 +410,7 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                                 if moved:
                                     last_action = ACTION_NAMES[action]
                                     best_score = max(best_score, game.score)
+                                    save_best_score()
                                     game_over = terminal or not can_move(game.board)
                                     if game_over:
                                         cancel_plan()
@@ -430,6 +431,7 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                                 if moved:
                                     last_action = ACTION_NAMES[planned_action]
                                     best_score = max(best_score, game.score)
+                                    save_best_score()
                                     game_over = terminal or not can_move(game.board)
                                     if game_over:
                                         cancel_plan()
@@ -446,7 +448,6 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                 if moved:
                     last_action = ACTION_NAMES[planned_action]
                     best_score = max(best_score, game.score)
-                    save_best_score()
                     game_over = terminal or not can_move(game.board)
                     if game_over:
                         cancel_plan()
