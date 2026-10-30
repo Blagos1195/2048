@@ -66,6 +66,11 @@ async function performMove(action){
  if(!currentState||busy||currentState.over)return false;
  const result=calculateMove(currentState,action);if(!result)return false;
  busy=true;ready=false;plannedAction=null;planBoardKey=null;updateTells();
+ const board=result.board,spawned=spawnInto(board);
+ const next={board,score:currentState.score+result.gained,moves:currentState.moves+1,maxTile:Math.max(...board.flat()),over:false};
+ next.over=!board.some((row,r)=>row.some((v,c)=>!v||(r<3&&v===board[r+1][c])||(c<3&&v===board[r][c+1])));
+ // Synchronise the exact post-move board with Python immediately, while the visual slide runs.
+ const syncPromise=engineReady?pythonState("browser_set_state",JSON.stringify(board)+","+next.score+","+next.moves):Promise.resolve();
  const cells=[...boardEl.children],rects=cells.map(el=>el.getBoundingClientRect()),boardRect=boardEl.getBoundingClientRect();
  const backgrounds=document.createDocumentFragment();
  for(let i=0;i<16;i++){const cell=document.createElement("div");cell.className="tile";backgrounds.appendChild(cell);}
@@ -87,12 +92,9 @@ async function performMove(action){
   ));
  }
  if(animations.length)await Promise.all(animations.map(a=>a.finished.catch(()=>{})));
- const board=result.board,spawned=spawnInto(board);
- const next={board,score:currentState.score+result.gained,moves:currentState.moves+1,maxTile:Math.max(...board.flat()),over:false};
- next.over=!board.some((row,r)=>row.some((v,c)=>!v||(r<3&&v===board[r+1][c])||(c<3&&v===board[r][c+1])));
+ try{await syncPromise;}catch(e){console.error("Python board sync failed:",e);}
  ready=true;busy=false;renderState(next);
  if(spawned){const tile=boardEl.children[spawned.r*4+spawned.c];if(tile)tile.animate([{transform:"scale(.65)",opacity:.35},{transform:"scale(1)",opacity:1}],{duration:95,easing:"ease-out"});}
- if(engineReady){try{await pythonState("browser_set_state",JSON.stringify(board)+","+next.score+","+next.moves);}catch(e){console.error(e);}}
  return true;
 }
 async function pythonState(fn,arg){return JSON.parse(await pyodide.runPythonAsync(arg===undefined?fn+"()":fn+"("+arg+")"));}
@@ -165,7 +167,7 @@ async function aiMove(automatic=false){
  }
  if(plannedAction===null||planBoardKey!==JSON.stringify(currentState.board))return;
  const action=plannedAction;plannedAction=null;planBoardKey=null;
- busy=true;updateTells();say("Moving…");
+ say("Moving…");
  try{await performMove(action);if(!currentState.over)say("Ready.");}
  catch(e){console.error(e);stopAuto();say("Something went wrong. Please reload the page.");}
  finally{busy=false;updateTells();if(aiControl&&!currentState?.over)planNextMove();}
