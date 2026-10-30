@@ -33,11 +33,26 @@ button.secondary{background:#bbada0}button:disabled{opacity:.5;cursor:wait}
 <script type="module">
 import { loadPyodide } from "https://cdn.jsdelivr.net/pyodide/v0.27.7/full/pyodide.mjs";
 const $=id=>document.getElementById(id);const boardEl=document.getElementById("board"),scoreEl=document.getElementById("score"),bestEl=document.getElementById("best"),statusEl=document.getElementById("status");
-const buttons=[...document.querySelectorAll("button")];let pyodide=null,ready=false,busy=false,best=0,touchStart=null,aiControl=false,autoMove=false,gameCount=0,totalScore=0,highestScore=0,highestTile=2,depth=1,titleTaps=0,titleTapTimer=null;
+const buttons=[...document.querySelectorAll("button")];let pyodide=null,ready=true,engineReady=false,busy=false,best=0,touchStart=null,aiControl=false,autoMove=false,gameCount=0,totalScore=0,highestScore=0,highestTile=2,depth=1,titleTaps=0,titleTapTimer=null;
 const say=s=>statusEl.textContent=s;
 function draw(state){currentState=state;boardEl.innerHTML="";state.board.flat().forEach(v=>{const cell=document.createElement("div");cell.className="tile "+(v?"t"+v:"");cell.textContent=v||"";boardEl.appendChild(cell);});scoreEl.textContent=state.score.toLocaleString();best=Math.max(best,state.score);bestEl.textContent=Math.max(best,highestScore).toLocaleString();if(state.over){recordGame();stopAuto();say("Game over. Start a new game to play again.");}updateTells();}
 async function pythonState(fn,arg){return JSON.parse(await pyodide.runPythonAsync(arg===undefined?fn+"()":fn+"("+arg+")"));}
-async function humanMove(action){if(!ready||busy||aiControl||currentState?.over)return;draw(await pythonState("browser_move",action));}
+function spawnTile(board){const empty=[];for(let r=0;r<4;r++)for(let c=0;c<4;c++)if(!board[r][c])empty.push([r,c]);if(!empty.length)return;const [r,c]=empty[Math.floor(Math.random()*empty.length)];board[r][c]=Math.random()<0.1?4:2;}
+function jsMove(state,action){
+ const board=state.board.map(row=>row.slice());let gained=0,changed=false;
+ for(let n=0;n<4;n++){
+  const coords=[];for(let k=0;k<4;k++){let r,c;if(action===0){r=n;c=k;}else if(action===2){r=n;c=3-k;}else if(action===3){r=k;c=n;}else{r=3-k;c=n;}coords.push([r,c]);}
+  const vals=coords.map(([r,c])=>board[r][c]).filter(Boolean),merged=[];
+  for(let i=0;i<vals.length;i++){if(vals[i]===vals[i+1]){const v=vals[i]*2;merged.push(v);gained+=v;i++;}else merged.push(vals[i]);}
+  while(merged.length<4)merged.push(0);
+  coords.forEach(([r,c],i)=>{if(board[r][c]!==merged[i])changed=true;board[r][c]=merged[i];});
+ }
+ if(!changed)return state;spawnTile(board);const maxTile=Math.max(...board.flat());
+ const moves=state.moves+1,score=state.score+gained;
+ let can=false;for(let r=0;r<4;r++)for(let c=0;c<4;c++){if(!board[r][c]||r<3&&board[r][c]===board[r+1][c]||c<3&&board[r][c]===board[r][c+1])can=true;}
+ return {board,score,moves,maxTile,over:!can};
+}
+async function humanMove(action){if(!ready||busy||aiControl||currentState?.over)return;if(engineReady)renderState(await pythonState("browser_move",action));else renderState(jsMove(currentState,action));}
 
 const keyMap={ArrowLeft:0,ArrowDown:1,ArrowRight:2,ArrowUp:3};
 boardEl.addEventListener("pointerdown",e=>{touchStart=[e.clientX,e.clientY];});
@@ -50,7 +65,7 @@ function updateTells(){
   $("tell-auto").classList.toggle("active",autoMove);
   $("tell-ready").classList.toggle("active",aiControl&&ready&&!busy&&!autoMove&&plannedAction!==null);
   $("tell-ready").classList.toggle("ready",ready&&!busy&&plannedAction!==null);
-  $("tell-ready").disabled=!ready||busy||!aiControl||autoMove||plannedAction===null;
+  $("tell-ready").disabled=!engineReady||busy||!aiControl||autoMove||plannedAction===null;
 }
 function stopAuto(){autoMove=false;clearTimeout(autoTimer);updateTells();}
 function recordGame(){if(recorded||!currentState||!currentState.moves)return;recorded=true;gameCount++;totalScore+=currentState.score;highestScore=Math.max(highestScore,currentState.score);highestTile=Math.max(highestTile,currentState.maxTile);try{localStorage.setItem("2048-player-stats",JSON.stringify({gamesPlayed:gameCount,totalScore,highestScore,highestTile}));}catch(e){}}
@@ -59,7 +74,7 @@ function renderState(state){
  if(state.over){recordGame();stopAuto();}
 }
 async function planNextMove(){
- if(!ready||!aiControl||busy||planning||currentState?.over)return;
+ if(!engineReady||!ready||!aiControl||busy||planning||currentState?.over)return;
  const boardKey=JSON.stringify(currentState.board);
  if(plannedAction!==null&&planBoardKey===boardKey)return;
  planning=true;plannedAction=null;updateTells();
@@ -72,7 +87,7 @@ async function planNextMove(){
  finally{planning=false;updateTells();}
 }
 async function aiMove(automatic=false){
- if(!ready||busy||currentState?.over||!aiControl||(autoMove&&!automatic))return;
+ if(!engineReady||!ready||busy||currentState?.over||!aiControl||(autoMove&&!automatic))return;
  const boardKey=JSON.stringify(currentState.board);
  if(plannedAction===null||planBoardKey!==boardKey){
   say("Preparing move…");
@@ -87,8 +102,10 @@ async function aiMove(automatic=false){
 }
 function scheduleAuto(){clearTimeout(autoTimer);if(!aiControl||!autoMove)return;autoTimer=setTimeout(async()=>{await aiMove(true);if(aiControl&&autoMove&&!currentState?.over)scheduleAuto();},100);}
 async function startNewGame(){
- if(!ready||busy)return;recordGame();stopAuto();aiControl=false;recorded=false;
- renderState(await pythonState("browser_new_game"));say("Ready.");
+ if(!ready||busy)return;recordGame();stopAuto();aiControl=false;plannedAction=null;planBoardKey=null;recorded=false;
+ if(engineReady)renderState(await pythonState("browser_new_game"));
+ else {const board=Array.from({length:4},()=>[0,0,0,0]);spawnTile(board);spawnTile(board);renderState({board,score:0,moves:0,maxTile:Math.max(...board.flat()),over:false});}
+ say(engineReady?"Ready.":"Game ready. AI loading…");
 }
 function openPanel(settings=false){
  $("panel-title").textContent=settings?"SETTINGS":"2048 STATS";
@@ -109,7 +126,13 @@ document.getElementById("tell-auto").addEventListener("click",()=>{aiControl=tru
 document.querySelector("h1").addEventListener("click",()=>{titleTaps++;clearTimeout(titleTapTimer);titleTapTimer=setTimeout(()=>{if(titleTaps>=3)openPanel(true);titleTaps=0;},500);});
 window.addEventListener("keydown",e=>{if(e.key.toLowerCase()==="d"){openPanel(true);e.preventDefault();return;}if(e.key==="F8"||e.key==="`"){aiControl=!aiControl;if(!aiControl){stopAuto();plannedAction=null;planBoardKey=null;}updateTells();if(aiControl)planNextMove();e.preventDefault();return;}if(e.key==="F7"){aiControl=true;autoMove=!autoMove;updateTells();if(autoMove)scheduleAuto();else clearTimeout(autoTimer);planNextMove();e.preventDefault();return;}if(aiControl){e.preventDefault();aiMove(true);return;}if(keyMap[e.key]!==undefined){e.preventDefault();humanMove(keyMap[e.key]);}});
 
-async function start(){try{pyodide=await loadPyodide();await pyodide.loadPackage("numpy");const [sourceResponse,modelResponse]=await Promise.all([fetch("selfplay_ai.py"),fetch("models/selfplay/best.npz")]);if(!sourceResponse.ok)throw new Error("Game resources could not be loaded.");if(!modelResponse.ok)throw new Error("Game resources could not be loaded.");pyodide.FS.mkdirTree("/home/pyodide");pyodide.FS.writeFile("/home/pyodide/selfplay_ai.py",await sourceResponse.text());pyodide.FS.writeFile("/home/pyodide/best.npz",new Uint8Array(await modelResponse.arrayBuffer()));await pyodide.runPythonAsync(`
+async function start(){try{
+ renderState({board:[[0,0,0,0],[0,0,0,0],[0,0,2,0],[0,0,0,2]],score:0,moves:0,maxTile:2,over:false});say("Game ready. AI loading…");buttons.forEach(b=>b.disabled=false);
+ const pyodidePromise=loadPyodide();
+ const [sourceResponse,modelResponse]=await Promise.all([fetch("selfplay_ai.py"),fetch("models/selfplay/best.npz"),pyodidePromise.then(()=>null)]);
+ pyodide=await pyodidePromise;await pyodide.loadPackage("numpy");
+ if(!sourceResponse.ok||!modelResponse.ok)throw new Error("Game resources could not be loaded.");
+ pyodide.FS.mkdirTree("/home/pyodide");pyodide.FS.writeFile("/home/pyodide/selfplay_ai.py",await sourceResponse.text());pyodide.FS.writeFile("/home/pyodide/best.npz",new Uint8Array(await modelResponse.arrayBuffer()));await pyodide.runPythonAsync(`
 import sys, json
 sys.path.insert(0, "/home/pyodide")
 import selfplay_ai
@@ -136,6 +159,6 @@ def browser_ai_move(action):
         return _browser_state()
     _browser_game.step(int(action))
     return _browser_state()
-`);ready=true;buttons.forEach(b=>b.disabled=false);renderState(await pythonState("browser_new_game"));say("Ready.");updateTells();updateTells();if(aiControl)planNextMove();}catch(e){say("The game could not be loaded. Please reload the page.");console.error(e);}}
-buttons.forEach(b=>b.disabled=true);start();
+`);engineReady=true;await pythonState("browser_set_state",JSON.stringify(currentState.board)+","+currentState.score+","+currentState.moves);say("Ready.");updateTells();if(aiControl)planNextMove();}catch(e){console.error(e);say("Game is playable. AI could not be loaded.");updateTells();}}
+buttons.forEach(b=>b.disabled=false);start();
 </script></body></html>
