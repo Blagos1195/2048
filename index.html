@@ -43,7 +43,8 @@ const keyMap={ArrowLeft:0,ArrowDown:1,ArrowRight:2,ArrowUp:3};
 boardEl.addEventListener("pointerdown",e=>{touchStart=[e.clientX,e.clientY];});
 boardEl.addEventListener("pointerup",e=>{if(!touchStart)return;const dx=e.clientX-touchStart[0],dy=e.clientY-touchStart[1];touchStart=null;if(Math.max(Math.abs(dx),Math.abs(dy))<20)return;humanMove(Math.abs(dx)>Math.abs(dy)?(dx>0?2:0):(dy<0?3:1));});
 
-let autoTimer=null,currentState=null,recorded=false;\ntry{const saved=JSON.parse(localStorage.getItem("2048-player-stats")||"{}");gameCount=Number(saved.gamesPlayed)||0;totalScore=Number(saved.totalScore)||0;highestScore=Number(saved.highestScore)||0;highestTile=Number(saved.highestTile)||2;best=highestScore;}catch(e){}
+let autoTimer=null,currentState=null,recorded=false;
+try{const saved=JSON.parse(localStorage.getItem("2048-player-stats")||"{}");gameCount=Number(saved.gamesPlayed)||0;totalScore=Number(saved.totalScore)||0;highestScore=Number(saved.highestScore)||0;highestTile=Number(saved.highestTile)||2;best=highestScore;}catch(e){}
 function updateTells(){
   $("tell-ai").classList.toggle("active",aiControl);
   $("tell-auto").classList.toggle("active",autoMove);
