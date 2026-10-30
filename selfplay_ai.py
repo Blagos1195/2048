@@ -321,18 +321,58 @@ def play_game(agent: ExpectimaxAgent, seed: int, train: bool = False, max_moves:
     }
 
 
-def evaluate(evaluator: NTupleValue, games: int = 50, depth: int = 1, seed_start: int = 900_000) -> dict:
-    agent = ExpectimaxAgent(evaluator, depth=depth, seed=seed_start)
-    rows = [play_game(agent, seed_start + i, train=False) for i in range(games)]
+def _summarise_evaluation(rows: list[dict], depth: int, seconds: float) -> dict:
     scores = np.asarray([r["score"] for r in rows], dtype=np.float64)
     tiles = np.asarray([r["max_tile"] for r in rows], dtype=np.float64)
+    games = len(rows)
     return {
-        "games": games, "avg_score": float(scores.mean()), "median_score": float(np.median(scores)),
-        "avg_max_tile": float(tiles.mean()), "best_max_tile": int(tiles.max()),
-        "rate_2048": float(np.mean(tiles >= 2048)), "rate_4096": float(np.mean(tiles >= 4096)),
-        "rate_8192": float(np.mean(tiles >= 8192)),
+        "depth": depth, "games": games, "avg_score": float(scores.mean()),
+        "median_score": float(np.median(scores)), "avg_max_tile": float(tiles.mean()),
+        "best_max_tile": int(tiles.max()), "rate_2048": float(np.mean(tiles >= 2048)),
+        "rate_4096": float(np.mean(tiles >= 4096)), "rate_8192": float(np.mean(tiles >= 8192)),
         "avg_moves": float(np.mean([r["moves"] for r in rows])),
+        "seconds": float(seconds), "games_per_second": games / max(seconds, 1e-9),
     }
+
+
+def evaluate(evaluator: NTupleValue, games: int = 50, depth: int = 1, seed_start: int = 900_000) -> dict:
+    started = time.perf_counter()
+    rows = []
+    for i in range(games):
+        agent = ExpectimaxAgent(evaluator, depth=depth, seed=seed_start + i)
+        rows.append(play_game(agent, seed_start + i, train=False))
+    return _summarise_evaluation(rows, depth, time.perf_counter() - started)
+
+
+def _evaluate_game_worker(task: tuple[int, int]) -> dict:
+    """Evaluate one game using the worker's read-only shared model snapshot."""
+    seed, depth = task
+    agent = ExpectimaxAgent(_WORKER_EVALUATOR, depth=depth, seed=seed)
+    return play_game(agent, seed, train=False)
+
+
+def evaluate_depths(
+    evaluator: NTupleValue, games: int, depths: list[int], seed_start: int,
+    pool=None,
+) -> list[dict]:
+    """Evaluate every depth on identical seeds, sharing one process pool across all depths."""
+    started = time.perf_counter()
+    tasks = [(seed_start + i, depth) for depth in depths for i in range(games)]
+    if pool is not None:
+        rows = list(pool.map(_evaluate_game_worker, tasks))
+    else:
+        rows = []
+        for seed, depth in tasks:
+            agent = ExpectimaxAgent(evaluator, depth=depth, seed=seed)
+            rows.append(play_game(agent, seed, train=False))
+    elapsed = time.perf_counter() - started
+    reports = []
+    offset = 0
+    for depth in depths:
+        depth_rows = rows[offset:offset + games]
+        offset += games
+        reports.append(_summarise_evaluation(depth_rows, depth, elapsed))
+    return reports
 
 
 _WORKER_SHM = None
@@ -414,7 +454,7 @@ def train(args: argparse.Namespace) -> None:
     write_header = mode == "w" or not metrics_path.exists()
     workers = args.workers
     if workers < 1:
-        workers = max(1, min(4, (os.cpu_count() or 2) - 1))
+        workers = max(1, os.cpu_count() or 1)
     workers = min(workers, args.games)
     print(f"Training with {workers} worker(s); updates are applied centrally in episode order.", flush=True)
 
@@ -423,6 +463,16 @@ def train(args: argparse.Namespace) -> None:
         if write_header:
             writer.writeheader()
         best_eval = -float("inf")
+        evaluation_path = out / "evaluation.csv"
+        evaluation_fields = ["episode", "depth", "games", "avg_score", "median_score", "avg_max_tile",
+                             "best_max_tile", "rate_2048", "rate_4096", "rate_8192", "avg_moves",
+                             "seconds", "games_per_second"]
+        evaluation_exists = evaluation_path.exists() and evaluation_path.stat().st_size > 0
+        evaluation_file = evaluation_path.open("a" if args.resume and evaluation_exists else "w",
+                                               newline="", encoding="utf-8")
+        evaluation_writer = csv.DictWriter(evaluation_file, fieldnames=["episode"] + evaluation_fields)
+        if not (args.resume and evaluation_exists):
+            evaluation_writer.writeheader()
         existing_best = out / "best.npz"
         if args.resume and existing_best.exists():
             try:
@@ -491,20 +541,30 @@ def train(args: argparse.Namespace) -> None:
                               f"TD updates {evaluator.updates:,} | {elapsed:.1f}s", flush=True)
 
                 if args.eval_every and (episode_base + episode) % args.eval_every == 0:
-                    report = evaluate(evaluator, games=args.eval_games, depth=args.eval_depth,
-                                      seed_start=args.eval_seed)
-                    print("EVAL " + " | ".join(f"{k}={v:.3f}" if isinstance(v, float) else f"{k}={v}"
-                                                for k, v in report.items()), flush=True)
-                    evaluator.save(out / "latest.npz", {"episode": episode_base + episode, "evaluation": report, "workers": workers})
-                    quality = report["avg_score"] + 500.0 * report["rate_2048"] + 1000.0 * report["rate_4096"]
+                    reports = evaluate_depths(evaluator, games=args.eval_games, depths=args.eval_depths,
+                                              seed_start=args.eval_seed, pool=pool)
+                    for report in reports:
+                        print("EVAL " + " | ".join(f"{k}={v:.3f}" if isinstance(v, float) else f"{k}={v}"
+                                                    for k, v in report.items()), flush=True)
+                        evaluation_writer.writerow({"episode": episode_base + episode, **report})
+                    evaluation_file.flush()
+                    validation = next((r for r in reports if r["depth"] == args.eval_depth), None)
+                    if validation is None:
+                        validation = evaluate(evaluator, games=args.eval_games, depth=args.eval_depth,
+                                              seed_start=args.eval_seed)
+                    metadata = {"episode": episode_base + episode, "evaluations": reports,
+                                "validation_depth": args.eval_depth, "workers": workers}
+                    evaluator.save(out / "latest.npz", metadata)
+                    quality = validation["avg_score"] + 500.0 * validation["rate_2048"] + 1000.0 * validation["rate_4096"]
                     if quality > best_eval:
                         best_eval = quality
-                        evaluator.save(out / "best.npz", {"episode": episode_base + episode, "evaluation": report, "workers": workers})
-                        print(f"New champion saved: {out / 'best.npz'}", flush=True)
+                        evaluator.save(out / "best.npz", metadata)
+                        print(f"New champion saved using depth-{args.eval_depth} validation: {out / 'best.npz'}", flush=True)
             evaluator.save(out / "latest.npz", {"episodes": episode_base + args.games, "workers": workers})
             print(f"Training finished. Latest model: {out / 'latest.npz'}")
             print(f"Best evaluated model: {out / 'best.npz'}")
         finally:
+            evaluation_file.close()
             if pool is not None:
                 pool.shutdown(wait=True, cancel_futures=True)
             if shm is not None:
@@ -621,12 +681,14 @@ depth 2 can play better but takes considerably longer.""",
                    help="lowest exploration chance after epsilon decays")
     t.add_argument("--epsilon-decay", type=float, default=0.99995,
                    help="multiplier applied to exploration after each game; closer to 1 decays slower")
-    t.add_argument("--eval-every", type=int, default=500,
-                   help="run a check-up every this many games; 0 disables periodic evaluation")
-    t.add_argument("--eval-games", type=int, default=30,
-                   help="number of games used for each check-up")
-    t.add_argument("--eval-depth", type=int, default=1,
-                   help="search depth used for check-up games")
+    t.add_argument("--eval-every", type=int, default=1000,
+                   help="run evaluation every this many training games; 0 disables periodic evaluation")
+    t.add_argument("--eval-games", type=int, default=50,
+                   help="number of games per search depth at each evaluation checkpoint")
+    t.add_argument("--eval-depths", type=int, nargs="+", default=[1, 2, 3, 4],
+                   help="search depths compared at each checkpoint")
+    t.add_argument("--eval-depth", type=int, default=2,
+                   help="fixed validation depth used to decide whether a checkpoint becomes best.npz")
     t.add_argument("--eval-seed", type=int, default=1_000_000,
                    help="starting random seed for check-up games")
     t.add_argument("--log-every", type=int, default=25,
@@ -680,8 +742,12 @@ def main() -> None:
         raise SystemExit("--depth must be >= 1")
     if args.command == "train" and args.games < 1:
         raise SystemExit("--games must be >= 1")
-    if args.command == "train" and args.eval_depth < 1:
-        raise SystemExit("--eval-depth must be >= 1")
+    if args.command == "train" and (args.eval_depth < 1 or not args.eval_depths or min(args.eval_depths) < 1):
+        raise SystemExit("evaluation depths must be >= 1")
+    if args.command == "train" and args.eval_games < 1:
+        raise SystemExit("--eval-games must be >= 1")
+    if args.command == "train" and args.eval_every < 0:
+        raise SystemExit("--eval-every must be >= 0")
     if args.command == "train" and args.workers < 0:
         raise SystemExit("--workers must be >= 0")
     if args.command == "benchmark" and (args.games < 1 or not args.depths or min(args.depths) < 1):
