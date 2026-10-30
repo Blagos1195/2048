@@ -64,13 +64,13 @@ function draw(state){
   const rect=target.cell.getBoundingClientRect();
   const dx=source.rect.left-rect.left,dy=source.rect.top-rect.top;
   if(!dx&&!dy)continue;
-  target.cell.style.transition="none";
-  target.cell.style.transform="translate3d("+dx+"px,"+dy+"px,0)";
-  target.cell.getBoundingClientRect();
-  requestAnimationFrame(()=>{
-   target.cell.style.transition="transform 150ms ease-in-out";
-   target.cell.style.transform="translate3d(0,0,0)";
-  });
+  target.cell.animate(
+   [
+    {transform:"translate3d("+dx+"px,"+dy+"px,0)"},
+    {transform:"translate3d(0,0,0)"}
+   ],
+   {duration:220,easing:"cubic-bezier(0.2,0.75,0.25,1)",fill:"both"}
+  );
  }
  scoreEl.textContent=state.score.toLocaleString();
  best=Math.max(best,state.score);highestScore=Math.max(highestScore,state.score);
