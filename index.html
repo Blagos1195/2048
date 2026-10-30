@@ -33,7 +33,7 @@ button.secondary{background:#bbada0}button:disabled{opacity:.5;cursor:wait}
 <script type="module">
 
 const $=id=>document.getElementById(id);const boardEl=document.getElementById("board"),scoreEl=document.getElementById("score"),bestEl=document.getElementById("best"),statusEl=document.getElementById("status");
-const buttons=[...document.querySelectorAll("button")];let pyodide=null,ready=true,engineReady=false,busy=false,best=0,touchStart=null,aiControl=false,autoMove=false,gameCount=0,totalScore=0,highestScore=0,highestTile=2,depth=1,titleTaps=0,titleTapTimer=null;
+const buttons=[...document.querySelectorAll("button")];let pyodide=null,ready=true,engineReady=false,busy=false,best=0,touchStart=null,aiControl=false,autoMove=false,gameCount=0,totalScore=0,highestScore=0,highestTile=2,depth=1,titleTaps=0,titleTapTimer=null,lastMoveAction=null;
 const say=s=>statusEl.textContent=s;
 function saveGame(){if(!currentState)return;try{localStorage.setItem("2048-current-game",JSON.stringify({board:currentState.board,score:currentState.score,moves:currentState.moves,maxTile:currentState.maxTile,over:currentState.over,wonShown,keepPlaying}));}catch(e){}}
 function draw(state){
@@ -56,10 +56,18 @@ function draw(state){
   let source=null,distance=Infinity;
   for(const candidate of oldTiles){
    if(candidate.used||candidate.value!==target.value)continue;
+   if(lastMoveAction===0||lastMoveAction===2){if(candidate.y!==target.y)continue;}
+   else if(lastMoveAction===1||lastMoveAction===3){if(candidate.x!==target.x)continue;}
    const d=Math.abs(candidate.x-target.x)+Math.abs(candidate.y-target.y);
    if(d<distance){source=candidate;distance=d;}
   }
-  if(!source)continue;
+  if(!source){
+   if(lastMoveAction!==null){
+    target.cell.style.visibility="hidden";
+    setTimeout(()=>{target.cell.style.visibility="visible";},240);
+   }
+   continue;
+  }
   source.used=true;
   const rect=target.cell.getBoundingClientRect();
   const dx=source.rect.left-rect.left,dy=source.rect.top-rect.top;
@@ -72,6 +80,7 @@ function draw(state){
    {duration:220,easing:"cubic-bezier(0.2,0.75,0.25,1)",fill:"both"}
   );
  }
+ lastMoveAction=null;
  scoreEl.textContent=state.score.toLocaleString();
  best=Math.max(best,state.score);highestScore=Math.max(highestScore,state.score);
  highestTile=Math.max(highestTile,state.maxTile||2);
@@ -95,7 +104,7 @@ function jsMove(state,action){
  let can=false;for(let r=0;r<4;r++)for(let c=0;c<4;c++){if(!board[r][c]||r<3&&board[r][c]===board[r+1][c]||c<3&&board[r][c]===board[r][c+1])can=true;}
  return {board,score,moves,maxTile,over:!can};
 }
-async function humanMove(action){if(!ready||busy||aiControl||currentState?.over)return;if(engineReady)renderState(await pythonState("browser_move",action));else renderState(jsMove(currentState,action));}
+async function humanMove(action){if(!ready||busy||aiControl||currentState?.over)return;lastMoveAction=action;if(engineReady)renderState(await pythonState("browser_move",action));else renderState(jsMove(currentState,action));}
 
 const keyMap={ArrowLeft:0,ArrowDown:1,ArrowRight:2,ArrowUp:3};
 boardEl.addEventListener("pointerdown",e=>{touchStart=[e.clientX,e.clientY];});
@@ -150,7 +159,7 @@ async function aiMove(automatic=false){
  if(plannedAction===null||planBoardKey!==JSON.stringify(currentState.board))return;
  const action=plannedAction;plannedAction=null;planBoardKey=null;
  busy=true;updateTells();say("Moving…");
- try{renderState(await pythonState("browser_ai_move",action));if(!currentState.over)say("Ready.");}
+ try{lastMoveAction=action;renderState(await pythonState("browser_ai_move",action));if(!currentState.over)say("Ready.");}
  catch(e){console.error(e);stopAuto();say("Something went wrong. Please reload the page.");}
  finally{busy=false;updateTells();if(aiControl&&!currentState?.over)planNextMove();}
 }
@@ -161,7 +170,7 @@ async function startNewGame(confirmed=false){
   showGameOverlay("Start a new game?","Your current game will be ended.","Restart","Cancel",()=>startNewGame(true),()=>{});
   return;
  }
- recordGame();stopAuto();aiControl=false;plannedAction=null;planBoardKey=null;recorded=false;wonShown=false;keepPlaying=false;
+ recordGame();stopAuto();lastMoveAction=null;aiControl=false;plannedAction=null;planBoardKey=null;recorded=false;wonShown=false;keepPlaying=false;
  if(engineReady)renderState(await pythonState("browser_new_game"));
  else {const board=Array.from({length:4},()=>[0,0,0,0]);spawnTile(board);spawnTile(board);renderState({board,score:0,moves:0,maxTile:Math.max(...board.flat()),over:false});}
  say("Ready.");
