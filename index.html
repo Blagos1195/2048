@@ -37,56 +37,44 @@ const buttons=[...document.querySelectorAll("button")];let pyodide=null,ready=tr
 const say=s=>statusEl.textContent=s;
 function saveGame(){if(!currentState)return;try{localStorage.setItem("2048-current-game",JSON.stringify({board:currentState.board,score:currentState.score,moves:currentState.moves,maxTile:currentState.maxTile,over:currentState.over,wonShown,keepPlaying}));}catch(e){}}
 function draw(state){
- const oldTiles=[...boardEl.children].map((el,index)=>({
-  value:Number(el.textContent)||0,
-  x:index%4,y:Math.floor(index/4),
-  rect:el.getBoundingClientRect(),used:false
- }));
  currentState=state;
- const fragment=document.createDocumentFragment(),targets=[];
- state.board.flat().forEach((value,index)=>{
-  const cell=document.createElement("div");
-  cell.className="tile "+(value?"t"+value:"");
-  cell.textContent=value||"";
-  fragment.appendChild(cell);
-  if(value)targets.push({value,x:index%4,y:Math.floor(index/4),cell});
- });
+ const fragment=document.createDocumentFragment();
+ state.board.flat().forEach(value=>{const cell=document.createElement("div");cell.className="tile "+(value?"t"+value:"");cell.textContent=value||"";fragment.appendChild(cell);});
  boardEl.replaceChildren(fragment);
- for(const target of targets){
-  let source=null,distance=Infinity;
-  for(const candidate of oldTiles){
-   if(candidate.used||candidate.value!==target.value)continue;
-   if(lastMoveAction===0||lastMoveAction===2){if(candidate.y!==target.y)continue;}
-   else if(lastMoveAction===1||lastMoveAction===3){if(candidate.x!==target.x)continue;}
-   const d=Math.abs(candidate.x-target.x)+Math.abs(candidate.y-target.y);
-   if(d<distance){source=candidate;distance=d;}
-  }
-  if(!source){
-   if(lastMoveAction!==null){
-    target.cell.style.visibility="hidden";
-    setTimeout(()=>{target.cell.style.visibility="visible";},240);
-   }
-   continue;
-  }
-  source.used=true;
-  const rect=target.cell.getBoundingClientRect();
-  const dx=source.rect.left-rect.left,dy=source.rect.top-rect.top;
-  if(!dx&&!dy)continue;
-  target.cell.animate(
-   [
-    {transform:"translate3d("+dx+"px,"+dy+"px,0)"},
-    {transform:"translate3d(0,0,0)"}
-   ],
-   {duration:220,easing:"cubic-bezier(0.2,0.75,0.25,1)",fill:"both"}
-  );
- }
- lastMoveAction=null;
- scoreEl.textContent=state.score.toLocaleString();
- best=Math.max(best,state.score);highestScore=Math.max(highestScore,state.score);
- highestTile=Math.max(highestTile,state.maxTile||2);
- bestEl.textContent=Math.max(best,highestScore).toLocaleString();
+ scoreEl.textContent=state.score.toLocaleString();best=Math.max(best,state.score);highestScore=Math.max(highestScore,state.score);highestTile=Math.max(highestTile,state.maxTile||2);bestEl.textContent=Math.max(best,highestScore).toLocaleString();
  try{localStorage.setItem("2048-player-stats",JSON.stringify({gamesPlayed:gameCount,totalScore,highestScore,highestTile}));}catch(e){}
  saveGame();if(state.over){recordGame();stopAuto();say("Game over. Start a new game to play again.");}updateTells();
+}
+function calculateMove(state,action){
+ const board=state.board.map(row=>row.slice()),records=[];let gained=0;
+ for(let line=0;line<4;line++){
+  const coords=[];for(let k=0;k<4;k++){if(action===0)coords.push([line,k]);else if(action===2)coords.push([line,3-k]);else if(action===3)coords.push([k,line]);else coords.push([3-k,line]);}
+  const tiles=coords.map(([r,c])=>({r,c,value:state.board[r][c]})).filter(t=>t.value);let out=0;
+  for(let i=0;i<tiles.length;i++){
+   const first=tiles[i],second=tiles[i+1],dest=coords[out++];
+   if(second&&first.value===second.value){records.push({from:[first.r,first.c],to:dest},{from:[second.r,second.c],to:dest});board[dest[0]][dest[1]]=first.value*2;gained+=first.value*2;i++;}
+   else{records.push({from:[first.r,first.c],to:dest});board[dest[0]][dest[1]]=first.value;}
+  }
+  for(let k=out;k<4;k++){const [r,c]=coords[k];board[r][c]=0;}
+ }
+ const changed=board.some((row,r)=>row.some((v,c)=>v!==state.board[r][c]));
+ return changed?{board,records,gained}:null;
+}
+function spawnInto(board){const empty=[];for(let r=0;r<4;r++)for(let c=0;c<4;c++)if(!board[r][c])empty.push([r,c]);if(!empty.length)return null;const [r,c]=empty[Math.floor(Math.random()*empty.length)],value=Math.random()<0.1?4:2;board[r][c]=value;return {r,c,value};}
+const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+async function performMove(action){
+ if(!currentState||busy||currentState.over)return false;
+ const result=calculateMove(currentState,action);if(!result)return false;
+ busy=true;ready=false;plannedAction=null;planBoardKey=null;updateTells();
+ const cells=[...boardEl.children],rects=cells.map(el=>el.getBoundingClientRect()),animations=[];
+ for(const move of result.records){const [fr,fc]=move.from,[tr,tc]=move.to,index=fr*4+fc,el=cells[index];if(!el)continue;const dx=rects[tr*4+tc].left-rects[index].left,dy=rects[tr*4+tc].top-rects[index].top;if(dx||dy)animations.push(el.animate([{transform:"translate3d(0,0,0)"},{transform:"translate3d("+dx+"px,"+dy+"px,0)"}],{duration:160,easing:"cubic-bezier(0.2,0.75,0.25,1)",fill:"forwards"}));}
+ if(animations.length)await Promise.all(animations.map(a=>a.finished.catch(()=>{})));
+ await sleep(20);
+ const board=result.board;spawnInto(board);const next={board,score:currentState.score+result.gained,moves:currentState.moves+1,maxTile:Math.max(...board.flat()),over:false};
+ next.over=!board.some((row,r)=>row.some((v,c)=>!v||(r<3&&v===board[r+1][c])||(c<3&&v===board[r][c+1])));
+ ready=true;busy=false;renderState(next);
+ if(engineReady){try{await pythonState("browser_set_state",JSON.stringify(board)+","+next.score+","+next.moves);}catch(e){console.error(e);}}
+ return true;
 }
 async function pythonState(fn,arg){return JSON.parse(await pyodide.runPythonAsync(arg===undefined?fn+"()":fn+"("+arg+")"));}
 function spawnTile(board){const empty=[];for(let r=0;r<4;r++)for(let c=0;c<4;c++)if(!board[r][c])empty.push([r,c]);if(!empty.length)return;const [r,c]=empty[Math.floor(Math.random()*empty.length)];board[r][c]=Math.random()<0.1?4:2;}
@@ -104,7 +92,7 @@ function jsMove(state,action){
  let can=false;for(let r=0;r<4;r++)for(let c=0;c<4;c++){if(!board[r][c]||r<3&&board[r][c]===board[r+1][c]||c<3&&board[r][c]===board[r][c+1])can=true;}
  return {board,score,moves,maxTile,over:!can};
 }
-async function humanMove(action){if(!ready||busy||aiControl||currentState?.over)return;lastMoveAction=action;if(engineReady)renderState(await pythonState("browser_move",action));else renderState(jsMove(currentState,action));}
+async function humanMove(action){if(!ready||busy||aiControl||currentState?.over)return;await performMove(action);}
 
 const keyMap={ArrowLeft:0,ArrowDown:1,ArrowRight:2,ArrowUp:3};
 boardEl.addEventListener("pointerdown",e=>{touchStart=[e.clientX,e.clientY];});
@@ -159,7 +147,7 @@ async function aiMove(automatic=false){
  if(plannedAction===null||planBoardKey!==JSON.stringify(currentState.board))return;
  const action=plannedAction;plannedAction=null;planBoardKey=null;
  busy=true;updateTells();say("Moving…");
- try{lastMoveAction=action;renderState(await pythonState("browser_ai_move",action));if(!currentState.over)say("Ready.");}
+ try{await performMove(action);if(!currentState.over)say("Ready.");}
  catch(e){console.error(e);stopAuto();say("Something went wrong. Please reload the page.");}
  finally{busy=false;updateTells();if(aiControl&&!currentState?.over)planNextMove();}
 }
