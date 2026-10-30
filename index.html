@@ -32,19 +32,18 @@ button.secondary{background:#bbada0}button:disabled{opacity:.5;cursor:wait}
 </main>
 <script type="module">
 import { loadPyodide } from "https://cdn.jsdelivr.net/pyodide/v0.27.7/full/pyodide.mjs";
-const boardEl=document.getElementById("board"),scoreEl=document.getElementById("score"),bestEl=document.getElementById("best"),statusEl=document.getElementById("status");
+const $=id=>document.getElementById(id);const boardEl=document.getElementById("board"),scoreEl=document.getElementById("score"),bestEl=document.getElementById("best"),statusEl=document.getElementById("status");
 const buttons=[...document.querySelectorAll("button")];let pyodide=null,ready=false,busy=false,best=0,touchStart=null,aiControl=false,autoMove=false,gameCount=0,totalScore=0,highestScore=0,highestTile=2,depth=1,titleTaps=0,titleTapTimer=null;
 const say=s=>statusEl.textContent=s;
-function draw(state){currentState=state;boardEl.innerHTML="";state.board.flat().forEach(v=>{const cell=document.createElement("div");cell.className="tile "+(v?"t"+v:"");cell.textContent=v||"";boardEl.appendChild(cell);});scoreEl.textContent=state.score.toLocaleString();best=Math.max(best,state.score);bestEl.textContent=Math.max(best,highestScore).toLocaleString();if(state.over){gameOverRecorded=true;stopAuto();say("Game over. Start a new game to play again.");}updateTells();}
+function draw(state){currentState=state;boardEl.innerHTML="";state.board.flat().forEach(v=>{const cell=document.createElement("div");cell.className="tile "+(v?"t"+v:"");cell.textContent=v||"";boardEl.appendChild(cell);});scoreEl.textContent=state.score.toLocaleString();best=Math.max(best,state.score);bestEl.textContent=Math.max(best,highestScore).toLocaleString();if(state.over){recordGame();stopAuto();say("Game over. Start a new game to play again.");}updateTells();}
 async function pythonState(fn,arg){return JSON.parse(await pyodide.runPythonAsync(arg===undefined?fn+"()":fn+"("+arg+")"));}
-async function humanMove(action){if(!ready||busy||aiControl)return;const before=await pythonState("browser_move",action);draw(before);if(before.score>0){} }
+async function humanMove(action){if(!ready||busy||aiControl||currentState?.over)return;draw(await pythonState("browser_move",action));}
 
-let gameOverRecorded=false;const keyMap={ArrowLeft:0,ArrowDown:1,ArrowRight:2,ArrowUp:3};
-window.addEventListener("keydown",e=>{if(e.key==="F8"||e.key==="`"){aiControl=!aiControl;if(!aiControl)stopAuto();updateTells();e.preventDefault();return;}if(e.key==="F7"){if(!aiControl)aiControl=true;autoMove=!autoMove;updateTells();if(autoMove)scheduleAuto();e.preventDefault();return;}if(e.key===" "&&aiControl&&!autoMove){e.preventDefault();makeAiMove();return;}if(e.key.toLowerCase()==="d"){openPanel(true);return;}if(keyMap[e.key]!==undefined){e.preventDefault();humanMove(keyMap[e.key]);}});
+const keyMap={ArrowLeft:0,ArrowDown:1,ArrowRight:2,ArrowUp:3};
 boardEl.addEventListener("pointerdown",e=>{touchStart=[e.clientX,e.clientY];});
 boardEl.addEventListener("pointerup",e=>{if(!touchStart)return;const dx=e.clientX-touchStart[0],dy=e.clientY-touchStart[1];touchStart=null;if(Math.max(Math.abs(dx),Math.abs(dy))<20)return;humanMove(Math.abs(dx)>Math.abs(dy)?(dx>0?2:0):(dy<0?3:1));});
 
-let aiControl=false, autoMove=false, depth=1, autoTimer=null, currentState=null, gameCount=0, totalScore=0, highestScore=0, highestTile=2, recorded=false;
+let autoTimer=null,currentState=null,recorded=false;
 function updateTells(){
   $("tell-ai").classList.toggle("active",aiControl);
   $("tell-auto").classList.toggle("active",autoMove);
@@ -87,6 +86,7 @@ document.getElementById("tell-ai").addEventListener("click",()=>{aiControl=!aiCo
 document.getElementById("tell-ready").addEventListener("click",()=>aiMove(false));
 document.getElementById("tell-auto").addEventListener("click",()=>{aiControl=true;autoMove=!autoMove;updateTells();if(autoMove)scheduleAuto();else clearTimeout(autoTimer);});
 document.querySelector("h1").addEventListener("click",()=>{titleTaps++;clearTimeout(titleTapTimer);titleTapTimer=setTimeout(()=>{if(titleTaps>=3)openPanel(true);titleTaps=0;},500);});
+window.addEventListener("keydown",e=>{if(e.key==="F8"||e.key==="`"){aiControl=!aiControl;if(!aiControl)stopAuto();updateTells();e.preventDefault();return;}if(e.key==="F7"){aiControl=true;autoMove=!autoMove;updateTells();if(autoMove)scheduleAuto();else clearTimeout(autoTimer);e.preventDefault();return;}if(e.key===" "&&aiControl&&!autoMove){e.preventDefault();aiMove(false);return;}if(e.key.toLowerCase()==="d"){openPanel(true);return;}if(keyMap[e.key]!==undefined){e.preventDefault();humanMove(keyMap[e.key]);}});
 
 async function start(){try{pyodide=await loadPyodide();await pyodide.loadPackage("numpy");const [sourceResponse,modelResponse]=await Promise.all([fetch("selfplay_ai.py"),fetch("models/selfplay/best.npz")]);if(!sourceResponse.ok)throw new Error("Game resources could not be loaded.");if(!modelResponse.ok)throw new Error("Game resources could not be loaded.");pyodide.FS.mkdirTree("/home/pyodide");pyodide.FS.writeFile("/home/pyodide/selfplay_ai.py",await sourceResponse.text());pyodide.FS.writeFile("/home/pyodide/best.npz",new Uint8Array(await modelResponse.arrayBuffer()));await pyodide.runPythonAsync(`
 import sys, json
