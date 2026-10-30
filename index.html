@@ -14,126 +14,77 @@ p{line-height:1.45;color:#776e65}.controls{display:flex;gap:8px;flex-wrap:wrap;m
 button{border:0;border-radius:6px;background:#8f7a66;color:white;padding:11px 14px;font-weight:700;font-size:14px;cursor:pointer}
 button.secondary{background:#bbada0}button:disabled{opacity:.5;cursor:wait}
 #board{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:repeat(4,minmax(0,1fr));gap:9px;background:#bbada0;padding:9px;border-radius:8px;width:100%;aspect-ratio:1;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
-.tile{display:flex;align-items:center;justify-content:center;border-radius:5px;background:#cdc1b4;color:#776e65;font-weight:800;font-size:clamp(22px,7vw,36px);min-width:0;min-height:0;overflow:hidden;white-space:nowrap}
+.tile{animation:tile-pop .12s ease-out;display:flex;align-items:center;justify-content:center;border-radius:5px;background:#cdc1b4;color:#776e65;font-weight:800;font-size:clamp(22px,7vw,36px);min-width:0;min-height:0;overflow:hidden;white-space:nowrap}
 .t2{background:#eee4da}.t4{background:#ede0c8}.t8{background:#f2b179;color:white}.t16{background:#f59563;color:white}.t32{background:#f67c5f;color:white}.t64{background:#f65e3b;color:white}.t128,.t256,.t512{background:#edcf72;color:white;font-size:clamp(18px,5vw,29px)}.t1024,.t2048,.t4096{background:#edc53f;color:white;font-size:clamp(15px,4.5vw,25px)}
 #status{min-height:24px;font-size:13px;color:#776e65;margin-top:10px;text-align:center}.bottom{position:relative;min-height:34px;display:flex;align-items:center;justify-content:space-between}.tells{display:flex;align-items:center;gap:5px;position:absolute;right:0;bottom:2px}.tell{width:28px;height:30px;border:0;background:transparent;padding:0;display:grid;place-items:center;touch-action:manipulation}.tell i{display:block;width:4px;height:4px;border-radius:50%;background:#ddd5ca}.tell.active i{background:#82796f}.tell.ready i{background:#b4aa9b}.tell.ready.active i{background:#6e9b69}.overlay{display:none;position:fixed;inset:0;background:#0005;align-items:center;justify-content:center;padding:16px;z-index:5}.overlay.open{display:flex}.panel{width:min(100%,320px);background:#faf8ef;border:2px solid #bbada0;border-radius:10px;padding:18px;color:#776e65;box-shadow:0 8px 30px #0003}.panel-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}.panel h2{font-size:17px;margin:0}.panel button{padding:7px 11px}.panel p{margin:9px 0}.panel select{font:inherit;padding:8px;border:1px solid #bbada0;border-radius:5px;background:white;color:#514b45;width:100%}
-@media(max-width:360px){#board{gap:6px;padding:6px}.tile{font-size:22px}}
+@keyframes tile-pop{from{transform:scale(.88);opacity:.72}to{transform:scale(1);opacity:1}}@media(max-width:360px){#board{gap:6px;padding:6px}.tile{font-size:22px}}
 </style>
-
+<script src="./coi-serviceworker.js"></script>
 </head>
 <body><main>
 <header><h1>2048</h1><div class="scores"><div class="score"><small>SCORE</small><span id="score">0</span></div><div class="score"><small>BEST</small><span id="best">0</span></div></div></header>
 <p>Join the numbers and reach 2048.</p>
 <div id="board" aria-label="2048 game board"></div>
 <div class="controls"><button id="new">New Game</button><button id="stats" class="secondary">Your Stats</button></div>
-<div class="bottom"><div id="status" aria-live="polite"></div></div>
-<div class="overlay" id="game-overlay"><section class="panel"><h2 id="game-title">2048</h2><div id="game-message"></div><div class="controls"><button id="game-primary">Continue</button><button id="game-secondary" class="secondary">New Game</button></div></section></div><div class="overlay" id="overlay"><section class="panel"><div class="panel-head"><h2 id="panel-title">2048 STATS</h2><button id="close" class="secondary" aria-label="Close">×</button></div><div id="stats-content"><p>Games played: 0</p><p>Highest score: 0</p><p>Average score: 0</p><p>Highest tile: 2</p></div></section></div>
+<div class="bottom"><div id="status">Loading game…</div><div class="tells" aria-label="Game status"><button class="tell" id="tell-ai" aria-label="Control mode"><i></i></button><button class="tell" id="tell-ready" aria-label="Make one automated move"><i></i></button><button class="tell" id="tell-auto" aria-label="Automatic play"><i></i></button></div></div>
+<div class="overlay" id="game-overlay"><section class="panel"><h2 id="game-title">2048</h2><div id="game-message"></div><div class="controls"><button id="game-primary">Continue</button><button id="game-secondary" class="secondary">New Game</button></div></section></div><div class="overlay" id="overlay"><section class="panel"><div class="panel-head"><h2 id="panel-title">2048 STATS</h2><button id="close" class="secondary" aria-label="Close">×</button></div><div id="stats-content"><p>Games played: 0</p><p>Highest score: 0</p><p>Average score: 0</p><p>Highest tile: 2</p></div><div id="depth-setting" hidden><p>Search depth</p><select id="depth"><option value="1">1 · Fast</option><option value="2">2 · Balanced</option><option value="3">3 · Slower</option></select><p style="font-size:12px">Higher depth searches further ahead but can take much longer, especially on mobile.</p></div></section></div>
 <p style="font-size:12px;margin-top:16px;color:#8b8178;text-align:center">Use the arrow keys or swipe to move.</p>
 </main>
-<script>
-const $=id=>document.getElementById(id);
-const boardEl=$("board"),scoreEl=$("score"),bestEl=$("best"),statusEl=$("status");
-let currentState=null,best=0,gameCount=0,totalScore=0,highestScore=0,highestTile=2;
-let touchStart=null,recorded=false,wonShown=false,keepPlaying=false;
+<script type="module">
+
+const $=id=>document.getElementById(id);const boardEl=document.getElementById("board"),scoreEl=document.getElementById("score"),bestEl=document.getElementById("best"),statusEl=document.getElementById("status");
+const buttons=[...document.querySelectorAll("button")];let pyodide=null,ready=true,engineReady=false,busy=false,best=0,touchStart=null,aiControl=false,autoMove=false,gameCount=0,totalScore=0,highestScore=0,highestTile=2,depth=1,titleTaps=0,titleTapTimer=null;
 const say=s=>statusEl.textContent=s;
-try{
- const saved=JSON.parse(localStorage.getItem("2048-player-stats")||"{}");
- gameCount=Number(saved.gamesPlayed)||0;totalScore=Number(saved.totalScore)||0;
- highestScore=Number(saved.highestScore)||0;highestTile=Number(saved.highestTile)||2;best=highestScore;
-}catch(e){}
-function saveGame(){
- if(!currentState)return;
- try{localStorage.setItem("2048-current-game",JSON.stringify({
-  board:currentState.board,score:currentState.score,moves:currentState.moves,
-  maxTile:currentState.maxTile,over:currentState.over,wonShown,keepPlaying
- }));}catch(e){}
-}
+function saveGame(){if(!currentState)return;try{localStorage.setItem("2048-current-game",JSON.stringify({board:currentState.board,score:currentState.score,moves:currentState.moves,maxTile:currentState.maxTile,over:currentState.over,wonShown,keepPlaying}));}catch(e){}}
 function draw(state){
- const previous=[...boardEl.children].map((el,index)=>({
-  value:Number(el.textContent)||0,
-  x:index%4,y:Math.floor(index/4),
-  rect:el.getBoundingClientRect(),used:false
- }));
- currentState=state;
- const fragment=document.createDocumentFragment();
- const targets=[];
- state.board.flat().forEach((value,index)=>{
-  const cell=document.createElement("div");
-  cell.className="tile "+(value?"t"+value:"");
-  cell.textContent=value||"";
-  fragment.appendChild(cell);
-  if(value)targets.push({value,x:index%4,y:Math.floor(index/4),cell});
+ const oldTiles=[...boardEl.children].map((el,index)=>({value:Number(el.textContent)||0,rect:el.getBoundingClientRect(),used:false,index}));
+ currentState=state;boardEl.innerHTML="";
+ state.board.flat().forEach(v=>{
+  const cell=document.createElement("div");cell.className="tile "+(v?"t"+v:"");cell.textContent=v||"";boardEl.appendChild(cell);
+  if(v){
+   const source=oldTiles.filter(t=>!t.used&&t.value===v).sort((x,y)=>x.index-y.index)[0];
+   if(source){source.used=true;const target=cell.getBoundingClientRect();const dx=source.rect.left-target.left,dy=source.rect.top-target.top;
+    if(dx||dy){cell.style.transition="none";cell.style.transform="translate("+dx+"px,"+dy+"px)";requestAnimationFrame(()=>requestAnimationFrame(()=>{cell.style.transition="transform 110ms ease-out";cell.style.transform="translate(0,0)";}));}
+   }else{cell.style.animation="tile-pop 130ms ease-out";}
+  }
  });
- boardEl.replaceChildren(fragment);
- for(const target of targets){
-  let source=null,bestDistance=Infinity;
-  for(const candidate of previous){
-   if(candidate.used||candidate.value!==target.value)continue;
-   const distance=Math.abs(candidate.x-target.x)+Math.abs(candidate.y-target.y);
-   if(distance<bestDistance){source=candidate;bestDistance=distance;}
-  }
-  if(!source)continue;
-  source.used=true;
-  const dx=source.rect.left-target.cell.getBoundingClientRect().left;
-  const dy=source.rect.top-target.cell.getBoundingClientRect().top;
-  if(dx||dy){
-   target.cell.style.transition="none";
-   target.cell.style.transform="translate("+dx+"px,"+dy+"px)";
-   requestAnimationFrame(()=>requestAnimationFrame(()=>{
-    target.cell.style.transition="transform 105ms ease-in-out";
-    target.cell.style.transform="translate(0,0)";
-   }));
-  }
- }
- scoreEl.textContent=state.score.toLocaleString();
- best=Math.max(best,state.score);highestScore=Math.max(highestScore,state.score);
- highestTile=Math.max(highestTile,state.maxTile||2);
- bestEl.textContent=Math.max(best,highestScore).toLocaleString();
+ scoreEl.textContent=state.score.toLocaleString();best=Math.max(best,state.score);highestScore=Math.max(highestScore,state.score);highestTile=Math.max(highestTile,state.maxTile||2);bestEl.textContent=Math.max(best,highestScore).toLocaleString();
  try{localStorage.setItem("2048-player-stats",JSON.stringify({gamesPlayed:gameCount,totalScore,highestScore,highestTile}));}catch(e){}
- saveGame();
- if(state.over){recordGame();say("Game over. Start a new game to play again.");}
+ saveGame();if(state.over){recordGame();stopAuto();say("Game over. Start a new game to play again.");}updateTells();
 }
-function spawnTile(board){
- const empty=[];
- for(let r=0;r<4;r++)for(let c=0;c<4;c++)if(!board[r][c])empty.push([r,c]);
- if(!empty.length)return;
- const [r,c]=empty[Math.floor(Math.random()*empty.length)];
- board[r][c]=Math.random()<0.1?4:2;
-}
+async function pythonState(fn,arg){return JSON.parse(await pyodide.runPythonAsync(arg===undefined?fn+"()":fn+"("+arg+")"));}
+function spawnTile(board){const empty=[];for(let r=0;r<4;r++)for(let c=0;c<4;c++)if(!board[r][c])empty.push([r,c]);if(!empty.length)return;const [r,c]=empty[Math.floor(Math.random()*empty.length)];board[r][c]=Math.random()<0.1?4:2;}
 function jsMove(state,action){
  const board=state.board.map(row=>row.slice());let gained=0,changed=false;
  for(let n=0;n<4;n++){
-  const coords=[];
-  for(let k=0;k<4;k++){
-   let r,c;
-   if(action===0){r=n;c=k;}else if(action===2){r=n;c=3-k;}
-   else if(action===3){r=k;c=n;}else{r=3-k;c=n;}
-   coords.push([r,c]);
-  }
+  const coords=[];for(let k=0;k<4;k++){let r,c;if(action===0){r=n;c=k;}else if(action===2){r=n;c=3-k;}else if(action===3){r=k;c=n;}else{r=3-k;c=n;}coords.push([r,c]);}
   const vals=coords.map(([r,c])=>board[r][c]).filter(Boolean),merged=[];
-  for(let i=0;i<vals.length;i++){
-   if(vals[i]===vals[i+1]){const v=vals[i]*2;merged.push(v);gained+=v;i++;}
-   else merged.push(vals[i]);
-  }
+  for(let i=0;i<vals.length;i++){if(vals[i]===vals[i+1]){const v=vals[i]*2;merged.push(v);gained+=v;i++;}else merged.push(vals[i]);}
   while(merged.length<4)merged.push(0);
   coords.forEach(([r,c],i)=>{if(board[r][c]!==merged[i])changed=true;board[r][c]=merged[i];});
  }
- if(!changed)return state;
- spawnTile(board);
- const maxTile=Math.max(...board.flat()),moves=state.moves+1,score=state.score+gained;
- let canMove=false;
- for(let r=0;r<4;r++)for(let c=0;c<4;c++){
-  if(!board[r][c]||(r<3&&board[r][c]===board[r+1][c])||(c<3&&board[r][c]===board[r][c+1]))canMove=true;
- }
- return {board,score,moves,maxTile,over:!canMove};
+ if(!changed)return state;spawnTile(board);const maxTile=Math.max(...board.flat());
+ const moves=state.moves+1,score=state.score+gained;
+ let can=false;for(let r=0;r<4;r++)for(let c=0;c<4;c++){if(!board[r][c]||r<3&&board[r][c]===board[r+1][c]||c<3&&board[r][c]===board[r][c+1])can=true;}
+ return {board,score,moves,maxTile,over:!can};
 }
-function recordGame(){
- if(recorded||!currentState||!currentState.moves)return;
- recorded=true;gameCount++;totalScore+=currentState.score;
- highestScore=Math.max(highestScore,currentState.score);
- highestTile=Math.max(highestTile,currentState.maxTile);
- try{localStorage.setItem("2048-player-stats",JSON.stringify({gamesPlayed:gameCount,totalScore,highestScore,highestTile}));}catch(e){}
+async function humanMove(action){if(!ready||busy||aiControl||currentState?.over)return;if(engineReady)renderState(await pythonState("browser_move",action));else renderState(jsMove(currentState,action));}
+
+const keyMap={ArrowLeft:0,ArrowDown:1,ArrowRight:2,ArrowUp:3};
+boardEl.addEventListener("pointerdown",e=>{touchStart=[e.clientX,e.clientY];});
+boardEl.addEventListener("pointerup",e=>{if(!touchStart)return;const dx=e.clientX-touchStart[0],dy=e.clientY-touchStart[1];touchStart=null;if(Math.max(Math.abs(dx),Math.abs(dy))<20)return;if(aiControl){aiMove(true);return;}humanMove(Math.abs(dx)>Math.abs(dy)?(dx>0?2:0):(dy<0?3:1));});
+
+let autoTimer=null,currentState=null,recorded=false,plannedAction=null,planning=false,planBoardKey=null,wonShown=false,keepPlaying=false;
+try{const saved=JSON.parse(localStorage.getItem("2048-player-stats")||"{}");gameCount=Number(saved.gamesPlayed)||0;totalScore=Number(saved.totalScore)||0;highestScore=Number(saved.highestScore)||0;highestTile=Number(saved.highestTile)||2;best=highestScore;}catch(e){}
+function updateTells(){
+  $("tell-ai").classList.toggle("active",aiControl);
+  $("tell-auto").classList.toggle("active",autoMove);
+  $("tell-ready").classList.toggle("active",aiControl&&ready&&!busy&&!autoMove&&plannedAction!==null);
+  $("tell-ready").classList.toggle("ready",ready&&!busy&&plannedAction!==null);
+  $("tell-ready").disabled=!engineReady||busy||!aiControl||autoMove||plannedAction===null;
 }
+function stopAuto(){autoMove=false;clearTimeout(autoTimer);updateTells();}
+function recordGame(){if(recorded||!currentState||!currentState.moves)return;recorded=true;gameCount++;totalScore+=currentState.score;highestScore=Math.max(highestScore,currentState.score);highestTile=Math.max(highestTile,currentState.maxTile);try{localStorage.setItem("2048-player-stats",JSON.stringify({gamesPlayed:gameCount,totalScore,highestScore,highestTile}));}catch(e){}}
 function showGameOverlay(title,message,primary,secondary,primaryAction,secondaryAction){
  $("game-title").textContent=title;$("game-message").textContent=message;
  $("game-primary").textContent=primary;$("game-secondary").textContent=secondary;
@@ -142,75 +93,112 @@ function showGameOverlay(title,message,primary,secondary,primaryAction,secondary
  $("game-overlay").classList.add("open");
 }
 function renderState(state){
- draw(state);
+ currentState=state;draw(state);bestEl.textContent=Math.max(best,highestScore).toLocaleString();
  if(state.maxTile>=2048&&!wonShown&&!keepPlaying){
-  wonShown=true;
-  showGameOverlay("You win!","You reached 2048.","Keep playing","New Game",
-   ()=>{keepPlaying=true;say("Keep going!");},()=>startNewGame(true));
+  wonShown=true;stopAuto();
+  showGameOverlay("You win!","You reached 2048.","Keep playing","New Game",()=>{keepPlaying=true;say("Keep going!");if(aiControl)planNextMove();},()=>startNewGame(true));
  }
- if(state.over){
-  recordGame();
-  showGameOverlay("Game over!","Final score: "+state.score.toLocaleString(),
-   "New Game","Close",()=>startNewGame(true),()=>{});
+ if(state.over){recordGame();stopAuto();showGameOverlay("Game over!","Final score: "+state.score.toLocaleString(),"New Game","Close",()=>startNewGame(true),()=>{});}
+}
+async function planNextMove(){
+ if(!engineReady||!ready||!aiControl||busy||planning||currentState?.over)return;
+ const boardKey=JSON.stringify(currentState.board);
+ if(plannedAction!==null&&planBoardKey===boardKey)return;
+ planning=true;plannedAction=null;updateTells();
+ try{
+  const result=await pythonState("browser_plan");
+  if(aiControl&&currentState&&!currentState.over&&JSON.stringify(currentState.board)===boardKey){
+   plannedAction=result.action;planBoardKey=boardKey;
+  }
+ }catch(e){console.error(e);say("Could not prepare the next move.");}
+ finally{planning=false;updateTells();}
+}
+async function aiMove(automatic=false){
+ if(!engineReady||!ready||busy||currentState?.over||!aiControl||(autoMove&&!automatic))return;
+ const boardKey=JSON.stringify(currentState.board);
+ if(plannedAction===null||planBoardKey!==boardKey){
+  say("Preparing move…");
+  await planNextMove();
  }
+ if(plannedAction===null||planBoardKey!==JSON.stringify(currentState.board))return;
+ const action=plannedAction;plannedAction=null;planBoardKey=null;
+ busy=true;updateTells();say("Moving…");
+ try{renderState(await pythonState("browser_ai_move",action));if(!currentState.over)say("Ready.");}
+ catch(e){console.error(e);stopAuto();say("Something went wrong. Please reload the page.");}
+ finally{busy=false;updateTells();if(aiControl&&!currentState?.over)planNextMove();}
 }
-function humanMove(action){
- if(!currentState||currentState.over||$("game-overlay").classList.contains("open"))return;
- const next=jsMove(currentState,action);
- if(next!==currentState){renderState(next);if(!next.over)say(" "); }
-}
+function scheduleAuto(){clearTimeout(autoTimer);if(!aiControl||!autoMove)return;autoTimer=setTimeout(async()=>{await aiMove(true);if(aiControl&&autoMove&&!currentState?.over)scheduleAuto();},100);}
 async function startNewGame(confirmed=false){
+ if(!ready||busy)return;
  if(!confirmed&&currentState&&currentState.moves>0&&!currentState.over){
-  showGameOverlay("Start a new game?","Your current game will be ended.",
-   "Restart","Cancel",()=>startNewGame(true),()=>{});
+  showGameOverlay("Start a new game?","Your current game will be ended.","Restart","Cancel",()=>startNewGame(true),()=>{});
   return;
  }
- recordGame();recorded=false;wonShown=false;keepPlaying=false;
- const board=Array.from({length:4},()=>[0,0,0,0]);
- spawnTile(board);spawnTile(board);
- renderState({board,score:0,moves:0,maxTile:Math.max(...board.flat()),over:false});
- say(" ");
+ recordGame();stopAuto();aiControl=false;plannedAction=null;planBoardKey=null;recorded=false;wonShown=false;keepPlaying=false;
+ if(engineReady)renderState(await pythonState("browser_new_game"));
+ else {const board=Array.from({length:4},()=>[0,0,0,0]);spawnTile(board);spawnTile(board);renderState({board,score:0,moves:0,maxTile:Math.max(...board.flat()),over:false});}
+ say("Ready.");
 }
-function openStats(){
- const avg=gameCount?totalScore/gameCount:0;
- $("stats-content").innerHTML="<p>Games played: "+gameCount+"</p><p>Highest score: "+highestScore+"</p><p>Average score: "+avg.toFixed(1)+"</p><p>Highest tile: "+highestTile+"</p>";
+function openPanel(settings=false){
+ $("panel-title").textContent=settings?"SETTINGS":"2048 STATS";
+ $("stats-content").hidden=settings;$("depth-setting").hidden=!settings;
+ if(!settings){const avg=gameCount?totalScore/gameCount:0;$("stats-content").innerHTML="<p>Games played: "+gameCount+"</p><p>Highest score: "+highestScore+"</p><p>Average score: "+avg.toFixed(1)+"</p><p>Highest tile: "+highestTile+"</p>";}
  $("overlay").classList.add("open");
 }
-$("new").addEventListener("click",()=>startNewGame(false));
-$("stats").addEventListener("click",openStats);
-$("close").addEventListener("click",()=>$("overlay").classList.remove("open"));
-$("overlay").addEventListener("click",e=>{if(e.target.id==="overlay")e.currentTarget.classList.remove("open");});
-$("game-overlay").addEventListener("click",e=>{if(e.target.id==="game-overlay")e.currentTarget.classList.remove("open");});
-const keyMap={ArrowLeft:0,ArrowDown:1,ArrowRight:2,ArrowUp:3};
-window.addEventListener("keydown",e=>{
- if($("game-overlay").classList.contains("open"))return;
- if(e.key.toLowerCase()==="r"){startNewGame(false);e.preventDefault();return;}
- if(keyMap[e.key]!==undefined){e.preventDefault();humanMove(keyMap[e.key]);}
-});
-boardEl.addEventListener("pointerdown",e=>{touchStart=[e.clientX,e.clientY];});
-boardEl.addEventListener("pointerup",e=>{
- if(!touchStart)return;
- const dx=e.clientX-touchStart[0],dy=e.clientY-touchStart[1];touchStart=null;
- if(Math.max(Math.abs(dx),Math.abs(dy))<20)return;
- humanMove(Math.abs(dx)>Math.abs(dy)?(dx>0?2:0):(dy<0?3:1));
-});
-function start(){
- let saved=null;
- try{
-  saved=JSON.parse(localStorage.getItem("2048-current-game")||"null");
-  if(!saved||!Array.isArray(saved.board)||saved.board.length!==4||
-   saved.board.some(row=>!Array.isArray(row)||row.length!==4))saved=null;
- }catch(e){}
- if(saved){
-  wonShown=!!saved.wonShown;keepPlaying=!!saved.keepPlaying;
-  renderState({board:saved.board,score:Number(saved.score)||0,moves:Number(saved.moves)||0,
-   maxTile:Number(saved.maxTile)||Math.max(...saved.board.flat()),over:!!saved.over});
-  say(saved.over?"Game over.":" ");
- }else{
-  const board=Array.from({length:4},()=>[0,0,0,0]);spawnTile(board);spawnTile(board);
-  renderState({board,score:0,moves:0,maxTile:Math.max(...board.flat()),over:false});
-  say(" ");
- }
-}
-start();
+
+
+document.getElementById("new").addEventListener("click",()=>startNewGame(false));
+document.getElementById("stats").addEventListener("click",()=>openPanel(false));
+document.getElementById("close").addEventListener("click",()=>document.getElementById("overlay").classList.remove("open"));
+document.getElementById("overlay").addEventListener("click",e=>{if(e.target.id==="overlay")e.currentTarget.classList.remove("open");});
+document.getElementById("depth").addEventListener("change",e=>{depth=Number(e.target.value);if(pyodide)pyodide.runPython("_browser_agent.depth = "+depth);say("Search setting updated.");});
+document.getElementById("tell-ai").addEventListener("click",()=>{aiControl=!aiControl;if(!aiControl){stopAuto();plannedAction=null;planBoardKey=null;}updateTells();if(aiControl)planNextMove();});
+document.getElementById("tell-ready").addEventListener("click",()=>aiMove(false));
+document.getElementById("tell-auto").addEventListener("click",()=>{aiControl=true;autoMove=!autoMove;updateTells();if(autoMove)scheduleAuto();else clearTimeout(autoTimer);if(aiControl)planNextMove();});
+document.querySelector("h1").addEventListener("click",()=>{titleTaps++;clearTimeout(titleTapTimer);titleTapTimer=setTimeout(()=>{if(titleTaps>=3)openPanel(true);titleTaps=0;},500);});
+window.addEventListener("keydown",e=>{if($("game-overlay").classList.contains("open"))return;if(e.key.toLowerCase()==="r"){startNewGame(false);e.preventDefault();return;}if(e.key.toLowerCase()==="d"){openPanel(true);e.preventDefault();return;}if(e.key==="F8"||e.key==="`"){aiControl=!aiControl;if(!aiControl){stopAuto();plannedAction=null;planBoardKey=null;}updateTells();if(aiControl)planNextMove();e.preventDefault();return;}if(e.key==="F7"){aiControl=true;autoMove=!autoMove;updateTells();if(autoMove)scheduleAuto();else clearTimeout(autoTimer);planNextMove();e.preventDefault();return;}if(aiControl){e.preventDefault();aiMove(true);return;}if(keyMap[e.key]!==undefined){e.preventDefault();humanMove(keyMap[e.key]);}});
+
+async function start(){try{
+ let restored=null;try{restored=JSON.parse(localStorage.getItem("2048-current-game")||"null");if(!restored||!Array.isArray(restored.board)||restored.board.length!==4||restored.board.some(row=>!Array.isArray(row)||row.length!==4))restored=null;}catch(e){}
+ const initial=restored||{board:[[0,0,0,0],[0,0,0,0],[0,0,2,0],[0,0,0,2]],score:0,moves:0,maxTile:2,over:false};
+ if(restored){wonShown=!!restored.wonShown;keepPlaying=!!restored.keepPlaying;}
+ renderState(initial);say(restored?"Game restored.":"Ready.");buttons.forEach(b=>b.disabled=false);
+ const pyodidePromise=import("https://cdn.jsdelivr.net/pyodide/v0.27.7/full/pyodide.mjs").then(module=>module.loadPyodide());
+ const [sourceResponse,modelResponse]=await Promise.all([fetch("selfplay_ai.py"),fetch("models/selfplay/best.npz"),pyodidePromise.then(()=>null)]);
+ pyodide=await pyodidePromise;await pyodide.loadPackage("numpy");
+ if(!sourceResponse.ok||!modelResponse.ok)throw new Error("Game resources could not be loaded.");
+ pyodide.FS.mkdirTree("/home/pyodide");pyodide.FS.writeFile("/home/pyodide/selfplay_ai.py",await sourceResponse.text());pyodide.FS.writeFile("/home/pyodide/best.npz",new Uint8Array(await modelResponse.arrayBuffer()));await pyodide.runPythonAsync(`
+import sys, json
+sys.path.insert(0, "/home/pyodide")
+import selfplay_ai
+_browser_evaluator = selfplay_ai.NTupleValue()
+_browser_evaluator.load("/home/pyodide/best.npz")
+_browser_agent = selfplay_ai.ExpectimaxAgent(_browser_evaluator, depth=1, seed=2048, cache_size=12000)
+_browser_game = selfplay_ai.Game2048()
+def _browser_state():
+    return json.dumps({"board": _browser_game.board.astype(int).tolist(), "score": int(_browser_game.score), "moves": int(_browser_game.moves), "maxTile": int(_browser_game.max_tile), "over": not selfplay_ai.can_move(_browser_game.board)})
+def browser_set_state(board, score, moves):
+    _browser_game.board = selfplay_ai.np.array(board, dtype=selfplay_ai.np.uint32)
+    _browser_game.score = int(score)
+    _browser_game.moves = int(moves)
+    return _browser_state()
+def browser_new_game():
+    global _browser_game
+    _browser_game = selfplay_ai.Game2048()
+    return _browser_state()
+def browser_move(action):
+    _browser_game.step(int(action))
+    return _browser_state()
+def browser_plan():
+    if not selfplay_ai.can_move(_browser_game.board):
+        return json.dumps({"action": None})
+    action = int(_browser_agent.choose_action(_browser_game.board.copy()))
+    return json.dumps({"action": action})
+def browser_ai_move(action):
+    if not selfplay_ai.can_move(_browser_game.board):
+        return _browser_state()
+    _browser_game.step(int(action))
+    return _browser_state()
+`);engineReady=true;await pythonState("browser_set_state",JSON.stringify(currentState.board)+","+currentState.score+","+currentState.moves);say("Ready.");updateTells();if(aiControl)planNextMove();}catch(e){console.error(e);say("Ready.");updateTells();}}
+buttons.forEach(b=>b.disabled=false);start();
 </script></body></html>
