@@ -61,7 +61,7 @@ function calculateMove(state,action){
  return changed?{board,records,gained}:null;
 }
 function spawnInto(board){const empty=[];for(let r=0;r<4;r++)for(let c=0;c<4;c++)if(!board[r][c])empty.push([r,c]);if(!empty.length)return null;const [r,c]=empty[Math.floor(Math.random()*empty.length)],value=Math.random()<0.1?4:2;board[r][c]=value;return {r,c,value};}
-const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+let pythonSync=Promise.resolve();
 async function performMove(action){
  if(!currentState||busy||currentState.over)return false;
  const result=calculateMove(currentState,action);if(!result)return false;
@@ -70,7 +70,8 @@ async function performMove(action){
  const next={board,score:currentState.score+result.gained,moves:currentState.moves+1,maxTile:Math.max(...board.flat()),over:false};
  next.over=!board.some((row,r)=>row.some((v,c)=>!v||(r<3&&v===board[r+1][c])||(c<3&&v===board[r][c+1])));
  // Synchronise the exact post-move board with Python immediately, while the visual slide runs.
- const syncPromise=engineReady?pythonState("browser_set_state",JSON.stringify(board)+","+next.score+","+next.moves):Promise.resolve();
+ // Keep the Python AI's board synchronised in the background. Human play must never wait for Pyodide.
+ const syncPromise=engineReady?(pythonSync=pythonSync.then(()=>pythonState("browser_set_state",JSON.stringify(board)+","+next.score+","+next.moves))):Promise.resolve();
  const cells=[...boardEl.children],rects=cells.map(el=>el.getBoundingClientRect()),boardRect=boardEl.getBoundingClientRect();
  const backgrounds=document.createDocumentFragment();
  for(let i=0;i<16;i++){const cell=document.createElement("div");cell.className="tile";backgrounds.appendChild(cell);}
@@ -92,11 +93,12 @@ async function performMove(action){
   ));
  }
  if(animations.length)await Promise.all(animations.map(a=>a.finished.catch(()=>{})));
- try{await syncPromise;}catch(e){console.error("Python board sync failed:",e);}
+ if(aiControl){try{await syncPromise;}catch(e){console.error("Python board sync failed:",e);}}
  ready=true;busy=false;renderState(next);
  if(spawned){const tile=boardEl.children[spawned.r*4+spawned.c];if(tile)tile.animate([{transform:"scale(.75)",opacity:.55},{transform:"scale(1)",opacity:1}],{duration:65,easing:"ease-out"});}
  if(pendingMoves.length&&!next.over&&!aiControl){const queued=pendingMoves.shift();queueMicrotask(()=>humanMove(queued));}
  else if(next.over){pendingMoves=[];}
+ else if(aiControl){planNextMove();}
  return true;
 }
 async function pythonState(fn,arg){return JSON.parse(await pyodide.runPythonAsync(arg===undefined?fn+"()":fn+"("+arg+")"));}
@@ -117,8 +119,12 @@ function jsMove(state,action){
 }
 async function humanMove(action){
  if(aiControl||currentState?.over)return;
- if(busy){if(pendingMoves.length<4)pendingMoves.push(action);return;}
- await performMove(action);
+ if(busy){if(pendingMoves.length<8)pendingMoves.push(action);return;}
+ const moved=await performMove(action);
+ // Skip buffered swipes that become illegal, rather than leaving the rest of the queue stuck.
+ if(!moved&&pendingMoves.length&&!busy&&!aiControl&&!currentState?.over){
+  const queued=pendingMoves.shift();queueMicrotask(()=>humanMove(queued));
+ }
 }
 
 const keyMap={ArrowLeft:0,ArrowDown:1,ArrowRight:2,ArrowUp:3};
@@ -153,6 +159,9 @@ function renderState(state){
 }
 async function planNextMove(){
  if(!engineReady||!ready||!aiControl||busy||planning||currentState?.over)return;
+ // Wait for any background board sync before asking Python to plan.
+ await pythonSync;
+ if(!engineReady||!ready||!aiControl||busy||currentState?.over)return;
  const boardKey=JSON.stringify(currentState.board);
  if(plannedAction!==null&&planBoardKey===boardKey)return;
  planning=true;plannedAction=null;updateTells();
