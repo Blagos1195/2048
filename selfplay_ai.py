@@ -375,6 +375,27 @@ def evaluate_depths(
     return reports
 
 
+def evaluate_depths_parallel(
+    evaluator: NTupleValue, games: int, depths: list[int], seed_start: int, workers: int,
+) -> list[dict]:
+    """Standalone all-core evaluation, used when no training pool exists yet."""
+    if ProcessPoolExecutor is None or shared_memory is None or workers <= 1:
+        return evaluate_depths(evaluator, games, depths, seed_start)
+    shm = shared_memory.SharedMemory(create=True, size=evaluator.weights.nbytes)
+    try:
+        shared_weights = np.ndarray(evaluator.weights.shape, dtype=np.float32, buffer=shm.buf)
+        shared_weights[:] = evaluator.weights
+        with ProcessPoolExecutor(
+            max_workers=workers,
+            initializer=_init_parallel_worker,
+            initargs=(shm.name, evaluator.weights.shape, evaluator.alpha, evaluator.gamma, depths[0]),
+        ) as pool:
+            return evaluate_depths(evaluator, games, depths, seed_start, pool=pool)
+    finally:
+        shm.close()
+        shm.unlink()
+
+
 _WORKER_SHM = None
 _WORKER_WEIGHTS = None
 _WORKER_EVALUATOR = None
@@ -470,7 +491,7 @@ def train(args: argparse.Namespace) -> None:
         evaluation_exists = evaluation_path.exists() and evaluation_path.stat().st_size > 0
         evaluation_file = evaluation_path.open("a" if args.resume and evaluation_exists else "w",
                                                newline="", encoding="utf-8")
-        evaluation_writer = csv.DictWriter(evaluation_file, fieldnames=["episode"] + evaluation_fields)
+        evaluation_writer = csv.DictWriter(evaluation_file, fieldnames=evaluation_fields)
         if not (args.resume and evaluation_exists):
             evaluation_writer.writeheader()
         existing_best = out / "best.npz"
@@ -478,8 +499,11 @@ def train(args: argparse.Namespace) -> None:
             try:
                 champion = NTupleValue(alpha=args.alpha, gamma=args.gamma, seed=args.seed)
                 champion.load(existing_best)
-                prior = evaluate(champion, games=args.eval_games, depth=args.eval_depth,
-                                 seed_start=args.eval_seed)
+                prior_reports = evaluate_depths_parallel(
+                    champion, games=args.eval_games, depths=[args.eval_depth],
+                    seed_start=args.eval_seed, workers=workers,
+                )
+                prior = prior_reports[0]
                 best_eval = prior["avg_score"] + 500.0 * prior["rate_2048"] + 1000.0 * prior["rate_4096"]
                 print(f"Existing champion validation quality: {best_eval:.2f}", flush=True)
             except (OSError, ValueError, KeyError) as exc:
