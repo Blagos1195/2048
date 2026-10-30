@@ -271,6 +271,14 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
         # Only accept a known legal action for the exact current board.
         return legal_actions(board)
 
+    def save_best_score():
+        """Persist the best score immediately, even if the game is closed mid-run."""
+        player_stats["highest_score"] = max(int(player_stats["highest_score"]), int(game.score))
+        try:
+            stats_path.write_text(json.dumps(player_stats, indent=2) + "\n", encoding="utf-8")
+        except OSError as exc:
+            print(f"[View] Could not save player stats: {exc}")
+
     def record_game():
         """Save this game once as the player's achievement."""
         nonlocal current_game_recorded
@@ -334,6 +342,7 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                 if new_rect.collidepoint(event.pos):
                     record_game()
                     best_score = max(best_score, game.score)
+                                    save_best_score()
                     cancel_plan()
                     game = Game2048(seed + int(time.time() * 1000) % 1000000)
                     game_over = False
@@ -437,6 +446,7 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                 if moved:
                     last_action = ACTION_NAMES[planned_action]
                     best_score = max(best_score, game.score)
+                    save_best_score()
                     game_over = terminal or not can_move(game.board)
                     if game_over:
                         cancel_plan()
