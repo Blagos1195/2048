@@ -31,7 +31,7 @@ button.secondary{background:#bbada0}button:disabled{opacity:.5;cursor:wait}
 <p style="font-size:12px;margin-top:16px;color:#8b8178;text-align:center">Use the arrow keys or swipe to move.</p>
 </main>
 <script type="module">
-import { loadPyodide } from "https://cdn.jsdelivr.net/pyodide/v0.27.7/full/pyodide.mjs";
+
 const $=id=>document.getElementById(id);const boardEl=document.getElementById("board"),scoreEl=document.getElementById("score"),bestEl=document.getElementById("best"),statusEl=document.getElementById("status");
 const buttons=[...document.querySelectorAll("button")];let pyodide=null,ready=true,engineReady=false,busy=false,best=0,touchStart=null,aiControl=false,autoMove=false,gameCount=0,totalScore=0,highestScore=0,highestTile=2,depth=1,titleTaps=0,titleTapTimer=null;
 const say=s=>statusEl.textContent=s;
@@ -163,7 +163,7 @@ async function start(){try{
  const initial=restored||{board:[[0,0,0,0],[0,0,0,0],[0,0,2,0],[0,0,0,2]],score:0,moves:0,maxTile:2,over:false};
  if(restored){wonShown=!!restored.wonShown;keepPlaying=!!restored.keepPlaying;}
  renderState(initial);say(restored?"Game restored. AI loading…":"Game ready. AI loading…");buttons.forEach(b=>b.disabled=false);
- const pyodidePromise=loadPyodide();
+ const pyodidePromise=import("https://cdn.jsdelivr.net/pyodide/v0.27.7/full/pyodide.mjs").then(module=>module.loadPyodide());
  const [sourceResponse,modelResponse]=await Promise.all([fetch("selfplay_ai.py"),fetch("models/selfplay/best.npz"),pyodidePromise.then(()=>null)]);
  pyodide=await pyodidePromise;await pyodide.loadPackage("numpy");
  if(!sourceResponse.ok||!modelResponse.ok)throw new Error("Game resources could not be loaded.");
