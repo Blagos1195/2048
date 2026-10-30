@@ -25,23 +25,19 @@ button.secondary{background:#bbada0}button:disabled{opacity:.5;cursor:wait}
 <header><h1>2048</h1><div class="scores"><div class="score"><small>SCORE</small><span id="score">0</span></div><div class="score"><small>BEST</small><span id="best">0</span></div></div></header>
 <p>Join the numbers and reach 2048.</p>
 <div id="board" aria-label="2048 game board"></div>
-<div class="controls"><button id="new">New game</button><button id="auto" class="secondary">Auto-play: off</button></div>
+<div class="controls"><button id="new">New game</button></div>
 <div id="status">Loading game…</div>
 <p style="font-size:12px;margin-top:16px;color:#8b8178">Use the arrow keys or swipe to move.</p>
 </main>
 <script type="module">
 import { loadPyodide } from "https://cdn.jsdelivr.net/pyodide/v0.27.7/full/pyodide.mjs";
 const boardEl=document.getElementById("board"),scoreEl=document.getElementById("score"),bestEl=document.getElementById("best"),statusEl=document.getElementById("status");
-const buttons=[...document.querySelectorAll("button")];let pyodide=null,ready=false,busy=false,autoplay=false,autoTimer=null,best=0,touchStart=null;
+const buttons=[...document.querySelectorAll("button")];let pyodide=null,ready=false,busy=false,best=0,touchStart=null;
 const say=s=>statusEl.textContent=s;
-function draw(state){boardEl.innerHTML="";state.board.flat().forEach(v=>{const cell=document.createElement("div");cell.className="tile "+(v?"t"+v:"");cell.textContent=v||"";boardEl.appendChild(cell);});scoreEl.textContent=state.score.toLocaleString();best=Math.max(best,state.score);bestEl.textContent=best.toLocaleString();if(state.over){stopAuto();say("Game over. Start a new game to play again.");}}
+function draw(state){boardEl.innerHTML="";state.board.flat().forEach(v=>{const cell=document.createElement("div");cell.className="tile "+(v?"t"+v:"");cell.textContent=v||"";boardEl.appendChild(cell);});scoreEl.textContent=state.score.toLocaleString();best=Math.max(best,state.score);bestEl.textContent=best.toLocaleString();if(state.over){say("Game over. Start a new game to play again.");}}
 async function pythonState(fn,arg){return JSON.parse(await pyodide.runPythonAsync(arg===undefined?fn+"()":fn+"("+arg+")"));}
-async function humanMove(action){if(!ready||busy||autoplay)return;draw(await pythonState("browser_move",action));}
-async function makeMove(){if(!ready||busy)return;busy=true;buttons.forEach(b=>b.disabled=true);say("Choosing a move…");try{const state=await pythonState("browser_ai_move");draw(state);if(!state.over)say("Move made.");}catch(e){say("Something went wrong. Please reload the page.");console.error(e);stopAuto();}finally{busy=false;buttons.forEach(b=>b.disabled=false);}}
-function stopAuto(){autoplay=false;clearTimeout(autoTimer);document.getElementById("auto").textContent="Auto-play: off";}
-function scheduleAuto(){if(!autoplay)return;autoTimer=setTimeout(async()=>{await makeMove();if(autoplay)scheduleAuto();},80);}
-document.getElementById("new").addEventListener("click",async()=>{if(!ready||busy)return;stopAuto();draw(await pythonState("browser_new_game"));say("New game.");});
-document.getElementById("auto").addEventListener("click",()=>{if(!ready)return;autoplay=!autoplay;document.getElementById("auto").textContent="Auto-play: "+(autoplay?"on":"off");if(autoplay)scheduleAuto();else clearTimeout(autoTimer);});
+async function humanMove(action){if(!ready||busy)return;draw(await pythonState("browser_move",action));}
+document.getElementById("new").addEventListener("click",async()=>{if(!ready||busy)return;draw(await pythonState("browser_new_game"));say("New game.");});
 const keyMap={ArrowLeft:0,ArrowDown:1,ArrowRight:2,ArrowUp:3};
 window.addEventListener("keydown",e=>{if(keyMap[e.key]!==undefined){e.preventDefault();humanMove(keyMap[e.key]);}});
 boardEl.addEventListener("pointerdown",e=>{touchStart=[e.clientX,e.clientY];});
