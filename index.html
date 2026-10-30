@@ -88,13 +88,15 @@ async function performMove(action){
   const dx=targetRect.left-sourceRect.left,dy=targetRect.top-sourceRect.top;
   if(dx||dy)animations.push(el.animate(
    [{transform:"translate3d(0,0,0)"},{transform:"translate3d("+dx+"px,"+dy+"px,0)"}],
-   {duration:105,easing:"linear",fill:"forwards"}
+   {duration:65,easing:"linear",fill:"forwards"}
   ));
  }
  if(animations.length)await Promise.all(animations.map(a=>a.finished.catch(()=>{})));
  try{await syncPromise;}catch(e){console.error("Python board sync failed:",e);}
  ready=true;busy=false;renderState(next);
- if(spawned){const tile=boardEl.children[spawned.r*4+spawned.c];if(tile)tile.animate([{transform:"scale(.65)",opacity:.35},{transform:"scale(1)",opacity:1}],{duration:95,easing:"ease-out"});}
+ if(spawned){const tile=boardEl.children[spawned.r*4+spawned.c];if(tile)tile.animate([{transform:"scale(.75)",opacity:.55},{transform:"scale(1)",opacity:1}],{duration:65,easing:"ease-out"});}
+ if(pendingMoves.length&&!next.over&&!aiControl){const queued=pendingMoves.shift();queueMicrotask(()=>humanMove(queued));}
+ else if(next.over){pendingMoves=[];}
  return true;
 }
 async function pythonState(fn,arg){return JSON.parse(await pyodide.runPythonAsync(arg===undefined?fn+"()":fn+"("+arg+")"));}
@@ -113,13 +115,17 @@ function jsMove(state,action){
  let can=false;for(let r=0;r<4;r++)for(let c=0;c<4;c++){if(!board[r][c]||r<3&&board[r][c]===board[r+1][c]||c<3&&board[r][c]===board[r][c+1])can=true;}
  return {board,score,moves,maxTile,over:!can};
 }
-async function humanMove(action){if(!ready||busy||aiControl||currentState?.over)return;await performMove(action);}
+async function humanMove(action){
+ if(aiControl||currentState?.over)return;
+ if(busy){if(pendingMoves.length<4)pendingMoves.push(action);return;}
+ await performMove(action);
+}
 
 const keyMap={ArrowLeft:0,ArrowDown:1,ArrowRight:2,ArrowUp:3};
 boardEl.addEventListener("pointerdown",e=>{touchStart=[e.clientX,e.clientY];});
 boardEl.addEventListener("pointerup",e=>{if(!touchStart)return;const dx=e.clientX-touchStart[0],dy=e.clientY-touchStart[1];touchStart=null;if(Math.max(Math.abs(dx),Math.abs(dy))<20)return;if(aiControl){aiMove(true);return;}humanMove(Math.abs(dx)>Math.abs(dy)?(dx>0?2:0):(dy<0?3:1));});
 
-let autoTimer=null,currentState=null,recorded=false,plannedAction=null,planning=false,planBoardKey=null,wonShown=false,keepPlaying=false;
+let autoTimer=null,currentState=null,recorded=false,plannedAction=null,planning=false,planBoardKey=null,wonShown=false,keepPlaying=false,pendingMoves=[];
 try{const saved=JSON.parse(localStorage.getItem("2048-player-stats")||"{}");gameCount=Number(saved.gamesPlayed)||0;totalScore=Number(saved.totalScore)||0;highestScore=Number(saved.highestScore)||0;highestTile=Number(saved.highestTile)||2;best=highestScore;}catch(e){}
 function updateTells(){
   $("tell-ai").classList.toggle("active",aiControl);
