@@ -51,7 +51,7 @@ def test_full_board_with_no_pairs_is_terminal():
 def test_feature_indices_and_value_are_valid():
     board = np.array([[0, 2, 4, 8], [16, 32, 64, 128], [256, 512, 1024, 2048], [4096, 8192, 16384, 32768]])
     indices = pattern_indices(board)
-    assert indices.shape == (8,)
+    assert indices.shape == (17,)
     assert np.all(indices >= 0)
     assert np.all(indices < 16 ** 4)
     assert exponent_board(board)[0].tolist() == [0, 1, 2, 3]
@@ -319,3 +319,38 @@ def test_expectimax_search_evaluates_only_requested_depth(monkeypatch):
     assert action in legal_actions(board)
     assert calls
     assert set(calls) == {3}
+
+
+def test_legacy_eight_pattern_checkpoint_migrates_without_losing_weights(tmp_path):
+    from selfplay_ai import PATTERN_COUNT, PATTERN_TABLE_SIZE
+
+    legacy = np.arange(8 * PATTERN_TABLE_SIZE, dtype=np.float32).reshape(8, PATTERN_TABLE_SIZE)
+    path = tmp_path / "legacy.npz"
+    np.savez_compressed(
+        path, weights=legacy, alpha=np.array(0.07), gamma=np.array(0.99),
+        updates=np.array(1234), metadata=np.array("{}"),
+    )
+
+    evaluator = NTupleValue()
+    evaluator.load(path)
+
+    assert evaluator.weights.shape == (PATTERN_COUNT, PATTERN_TABLE_SIZE)
+    assert np.array_equal(evaluator.weights[:8], legacy)
+    assert np.count_nonzero(evaluator.weights[8:]) == 0
+    assert evaluator.alpha == pytest.approx(0.07)
+    assert evaluator.gamma == pytest.approx(0.99)
+    assert evaluator.updates == 1234
+
+
+def test_local_square_patterns_are_included_and_transpose_invariant():
+    from selfplay_ai import PATTERNS, pattern_indices
+
+    assert len(PATTERNS) == 17
+    assert len(PATTERNS[8:]) == 9
+    board = np.array([
+        [2, 4, 8, 16],
+        [32, 64, 128, 256],
+        [512, 1024, 2048, 4096],
+        [8192, 16384, 32768, 65536],
+    ], dtype=np.uint32)
+    assert np.array_equal(pattern_indices(board), pattern_indices(board.T))
