@@ -62,3 +62,65 @@ jobs:
           print(f"After:  {after['ms_per_move']:.3f} ms/move")
           print(f"Change: {change:+.1f}% (negative is faster)")
           PY
+
+      - name: Isolate the two pattern-indexing optimisations
+        shell: bash
+        run: |
+          set -euo pipefail
+          MODEL=/tmp/selfplay-model/latest.npz
+          for variant in old_both old_exponent old_pattern optimised_both; do
+            echo "Running $variant"
+            python - "$variant" "$MODEL" > "/tmp/$variant.txt" <<'PY'
+          import runpy, sys
+          import numpy as np
+          import selfplay_ai as ai
+
+          variant, model = sys.argv[1], sys.argv[2]
+
+          def old_exponent_board(board):
+              board = np.asarray(board, dtype=np.int64)
+              out = np.zeros(board.shape, dtype=np.uint8)
+              mask = board > 0
+              out[mask] = np.minimum(
+                  np.rint(np.log2(board[mask])).astype(np.int64),
+                  ai.TILE_EXPONENT_CAP,
+              )
+              return out
+
+          def old_pattern_indices(board):
+              exponents = ai.exponent_board(board).reshape(-1)
+              result = np.empty(ai.PATTERN_COUNT, dtype=np.int32)
+              for p, cells in enumerate(ai.PATTERNS):
+                  idx = 0
+                  for cell in cells:
+                      idx = idx * ai.BASE + int(exponents[cell])
+                  result[p] = idx
+              return result
+
+          if variant in ("old_both", "old_exponent"):
+              ai.exponent_board = old_exponent_board
+          if variant in ("old_both", "old_pattern"):
+              ai.pattern_indices = old_pattern_indices
+
+          sys.argv = [
+              "main.py", "evaluate", "--model", model,
+              "--games", "5", "--depth", "2",
+              "--seed", "5200000", "--workers", "1",
+          ]
+          runpy.run_module("main", run_name="__main__")
+          PY
+          done
+          python - <<'PY'
+          import re
+          names = ("old_both", "old_exponent", "old_pattern", "optimised_both")
+          results = {}
+          for name in names:
+              data = open(f"/tmp/{name}.txt").read()
+              seconds = float(re.search(r"^seconds: ([0-9.eE+-]+)", data, re.M).group(1))
+              moves = float(re.search(r"^avg_moves: ([0-9.eE+-]+)", data, re.M).group(1))
+              results[name] = seconds * 1000 / (5 * moves)
+          baseline = results["old_both"]
+          for name in names:
+              change = (results[name] / baseline - 1) * 100
+              print(f"{name}: {results[name]:.3f} ms/move ({change:+.1f}% vs old)")
+          PY
