@@ -49,13 +49,18 @@ for _p, _cells in enumerate(PATTERNS):
         PATTERN_MEMBERSHIP[_cell].append((_p, _pos))
 
 
+# Boards contain powers of two, so a small lookup table avoids repeated log2 calls
+# in the hottest part of Expectimax. Values above the cap map to exponent 15.
+_TILE_EXPONENT_LOOKUP = np.minimum(
+    np.rint(np.log2(np.maximum(np.arange((1 << TILE_EXPONENT_CAP) + 1), 1))),
+    TILE_EXPONENT_CAP,
+).astype(np.uint8)
+_TILE_EXPONENT_LOOKUP[0] = 0
+
 def exponent_board(board: np.ndarray) -> np.ndarray:
-    """Convert tile values into exponents; zero remains the empty-cell code."""
-    board = np.asarray(board, dtype=np.int64)
-    out = np.zeros(board.shape, dtype=np.uint8)
-    mask = board > 0
-    out[mask] = np.minimum(np.rint(np.log2(board[mask])).astype(np.int64), TILE_EXPONENT_CAP)
-    return out
+    """Convert tile values into exponents using a lookup table."""
+    values = np.asarray(board)
+    return _TILE_EXPONENT_LOOKUP[np.minimum(values, 1 << TILE_EXPONENT_CAP).astype(np.intp)]
 
 
 @lru_cache(maxsize=65536)
@@ -140,15 +145,15 @@ class Game2048:
         return int(self.board.max())
 
 
+# Precompute pattern cell positions and base-16 place values. This replaces
+# 104 Python-level indexing/loop iterations for every board evaluation.
+_PATTERN_CELLS = np.asarray(PATTERNS, dtype=np.intp)
+_PATTERN_PLACE_VALUES = np.asarray((BASE ** 3, BASE ** 2, BASE, 1), dtype=np.int32)
+
 def pattern_indices(board: np.ndarray) -> np.ndarray:
     exponents = exponent_board(board).reshape(-1)
-    result = np.empty(PATTERN_COUNT, dtype=np.int32)
-    for p, cells in enumerate(PATTERNS):
-        idx = 0
-        for cell in cells:
-            idx = idx * BASE + int(exponents[cell])
-        result[p] = idx
-    return result
+    selected = exponents[_PATTERN_CELLS].astype(np.int32, copy=False)
+    return selected @ _PATTERN_PLACE_VALUES
 
 
 class NTupleValue:
