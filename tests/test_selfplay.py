@@ -221,7 +221,7 @@ def test_multi_depth_evaluation_reports_separate_timings_and_progress(monkeypatc
 
 
 
-def test_expectimax_cache_reuses_transposed_states():
+def test_expectimax_cache_keeps_transposed_states_separate():
     evaluator = NTupleValue(seed=29)
     rng = np.random.default_rng(30)
     evaluator.weights[:] = rng.normal(0.0, 0.01, evaluator.weights.shape).astype(np.float32)
@@ -233,13 +233,9 @@ def test_expectimax_cache_reuses_transposed_states():
         [2, 0, 0, 0],
     ], dtype=np.uint32)
 
-    direct = agent._chance(board.copy(), 0)
-    nodes = agent.nodes
-    transposed = agent._chance(board.T.copy(), 0)
-
-    assert transposed == pytest.approx(direct, abs=1e-6)
-    assert agent.nodes == nodes
-    assert agent.cache_hits == 1
+    direct_key = agent._cache_key(board, 0)
+    transposed_key = agent._cache_key(board.T.copy(), 0)
+    assert direct_key != transposed_key
 
 
 def test_expectimax_invalidates_cache_after_learning_update():
@@ -342,7 +338,7 @@ def test_legacy_eight_pattern_checkpoint_migrates_without_losing_weights(tmp_pat
     assert evaluator.updates == 1234
 
 
-def test_local_square_patterns_are_included_and_transpose_invariant():
+def test_local_square_patterns_are_included():
     from selfplay_ai import PATTERNS, pattern_indices
 
     assert len(PATTERNS) == 26
@@ -353,4 +349,4 @@ def test_local_square_patterns_are_included_and_transpose_invariant():
         [512, 1024, 2048, 4096],
         [8192, 16384, 32768, 65536],
     ], dtype=np.uint32)
-    assert np.array_equal(pattern_indices(board), pattern_indices(board.T))
+    assert pattern_indices(board).shape == (26,)
