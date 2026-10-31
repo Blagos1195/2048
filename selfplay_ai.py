@@ -212,6 +212,21 @@ class ExpectimaxAgent:
         self._chance_cache: OrderedDict[tuple[bytes, int], float] = OrderedDict()
         self._player_cache: OrderedDict[tuple[bytes, int], float] = OrderedDict()
         self.cache_hits = 0
+        self._cache_updates = evaluator.updates
+
+    def _cache_key(self, board: np.ndarray, depth: int) -> tuple[bytes, int]:
+        # Learned values change during single-process training. Cached search
+        # results are only valid for the exact evaluator version that produced them.
+        if self._cache_updates != self.evaluator.updates:
+            self._chance_cache.clear()
+            self._player_cache.clear()
+            self._cache_updates = self.evaluator.updates
+
+        # The row/column n-tuple evaluator is exactly transpose-invariant.
+        # Canonicalising this symmetry lets both orientations share cache entries.
+        direct = board.tobytes()
+        transposed = board.T.tobytes()
+        return (direct if direct <= transposed else transposed, depth)
 
     def _cache_get(self, cache: OrderedDict, key):
         value = cache.get(key)
@@ -250,7 +265,7 @@ class ExpectimaxAgent:
         return merge_score / 128.0 + self._chance(moved, depth - 1)
 
     def _chance(self, board: np.ndarray, depth: int) -> float:
-        key = (board.tobytes(), depth)
+        key = self._cache_key(board, depth)
         cached = self._cache_get(self._chance_cache, key)
         if cached is not None:
             return cached
@@ -277,7 +292,7 @@ class ExpectimaxAgent:
         return result
 
     def _best_player(self, board: np.ndarray, depth: int) -> float:
-        key = (board.tobytes(), depth)
+        key = self._cache_key(board, depth)
         cached = self._cache_get(self._player_cache, key)
         if cached is not None:
             return cached
