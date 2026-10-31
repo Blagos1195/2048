@@ -25,8 +25,8 @@ ACTIONS = (0, 1, 2, 3)  # left, down, right, up
 ACTION_NAMES = ("LEFT", "DOWN", "RIGHT", "UP")
 TILE_EXPONENT_CAP = 15
 BASE = TILE_EXPONENT_CAP + 1
-# Eight full rows/columns capture long-range ordering. Nine overlapping 2x2
-# squares add local adjacency and corner structure without discarding old features.
+# Eight full rows/columns capture long-range ordering. Both orientations of nine
+# overlapping 2x2 squares add local structure while preserving transpose symmetry.
 LINE_PATTERNS = (
     [tuple(r * 4 + c for c in range(4)) for r in range(4)]
     + [tuple(r * 4 + c for r in range(4)) for c in range(4)]
@@ -35,7 +35,11 @@ SQUARE_PATTERNS = [
     tuple((r + dr) * 4 + c + dc for dr in range(2) for dc in range(2))
     for r in range(3) for c in range(3)
 ]
-PATTERNS = tuple(LINE_PATTERNS + SQUARE_PATTERNS)
+SQUARE_TRANSPOSE_PATTERNS = [
+    tuple((r + dr) * 4 + c + dc for dc in range(2) for dr in range(2))
+    for r in range(3) for c in range(3)
+]
+PATTERNS = tuple(LINE_PATTERNS + SQUARE_PATTERNS + SQUARE_TRANSPOSE_PATTERNS)
 LEGACY_PATTERN_COUNT = len(LINE_PATTERNS)
 PATTERN_COUNT = len(PATTERNS)
 PATTERN_TABLE_SIZE = BASE ** 4
