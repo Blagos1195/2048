@@ -64,20 +64,25 @@ function spawnInto(board){const empty=[];for(let r=0;r<4;r++)for(let c=0;c<4;c++
 let pythonSync=Promise.resolve();
 async function performMove(action){
  if(!currentState||busy||currentState.over)return false;
- const result=calculateMove(currentState,action);if(!result)return false;
+ const visual=calculateMove(currentState,action);if(!visual)return false;
  busy=true;ready=false;plannedAction=null;planBoardKey=null;updateTells();
- const board=result.board,spawned=spawnInto(board);
- const next={board,score:currentState.score+result.gained,moves:currentState.moves+1,maxTile:Math.max(...board.flat()),over:false};
- next.over=!board.some((row,r)=>row.some((v,c)=>!v||(r<3&&v===board[r+1][c])||(c<3&&v===board[r][c+1])));
- // Synchronise the exact post-move board with Python immediately, while the visual slide runs.
- // Keep the Python AI's board synchronised in the background. Human play must never wait for Pyodide.
- const syncPromise=engineReady?(pythonSync=pythonSync.then(()=>pythonState("browser_set_state",JSON.stringify(board)+","+next.score+","+next.moves))):Promise.resolve();
+ let next,spawned;
+ try{
+  if(engineReady){
+   const result=await pythonState("browser_move",action);
+   next=result;spawned=result.spawned;
+  }else{
+   const board=visual.board;spawned=spawnInto(board);
+   next={board,score:currentState.score+visual.gained,moves:currentState.moves+1,maxTile:Math.max(...board.flat()),over:false};
+   next.over=!board.some((row,r)=>row.some((v,c)=>!v||(r<3&&v===board[r+1][c])||(c<3&&v===board[r][c+1])));
+  }
+ }catch(e){busy=false;ready=true;updateTells();console.error("Game move failed:",e);say("Something went wrong. Please reload the page.");return false;}
  const cells=[...boardEl.children],rects=cells.map(el=>el.getBoundingClientRect()),boardRect=boardEl.getBoundingClientRect();
  const backgrounds=document.createDocumentFragment();
  for(let i=0;i<16;i++){const cell=document.createElement("div");cell.className="tile";backgrounds.appendChild(cell);}
  boardEl.replaceChildren(backgrounds);
  const animations=[];
- for(const move of result.records){
+ for(const move of visual.records){
   const [fr,fc]=move.from,[tr,tc]=move.to,index=fr*4+fc,el=document.createElement("div");
   const source=cells[index];if(!source)continue;
   const sourceRect=rects[index],targetRect=rects[tr*4+tc];
@@ -93,7 +98,6 @@ async function performMove(action){
   ));
  }
  if(animations.length)await Promise.all(animations.map(a=>a.finished.catch(()=>{})));
- if(aiControl){try{await syncPromise;}catch(e){console.error("Python board sync failed:",e);}}
  ready=true;busy=false;renderState(next);
  if(spawned){const tile=boardEl.children[spawned.r*4+spawned.c];if(tile)tile.animate([{transform:"scale(.75)",opacity:.55},{transform:"scale(1)",opacity:1}],{duration:65,easing:"ease-out"});}
  if(pendingMoves.length&&!next.over&&!aiControl){const queued=pendingMoves.shift();queueMicrotask(()=>humanMove(queued));}
@@ -159,14 +163,14 @@ function renderState(state){
 }
 async function planNextMove(){
  if(!engineReady||!ready||!aiControl||busy||planning||currentState?.over)return;
- // Wait for any background board sync before asking Python to plan.
- await pythonSync;
  if(!engineReady||!ready||!aiControl||busy||currentState?.over)return;
  const boardKey=JSON.stringify(currentState.board);
  if(plannedAction!==null&&planBoardKey===boardKey)return;
  planning=true;plannedAction=null;updateTells();
  try{
+  const decisionStarted=performance.now();
   const result=await pythonState("browser_plan");
+  console.debug("[2048] AI decision:",(performance.now()-decisionStarted).toFixed(1)+" ms");
   if(aiControl&&currentState&&!currentState.over&&JSON.stringify(currentState.board)===boardKey){
    plannedAction=result.action;planBoardKey=boardKey;
   }
@@ -235,10 +239,10 @@ _browser_evaluator = selfplay_ai.NTupleValue()
 _browser_evaluator.load("/home/pyodide/best.npz")
 _browser_agent = selfplay_ai.ExpectimaxAgent(_browser_evaluator, depth=1, seed=2048, cache_size=12000)
 _browser_game = selfplay_ai.Game2048()
-def _browser_state():
-    return json.dumps({"board": _browser_game.board.astype(int).tolist(), "score": int(_browser_game.score), "moves": int(_browser_game.moves), "maxTile": int(_browser_game.max_tile), "over": not selfplay_ai.can_move(_browser_game.board)})
+def _browser_state(spawned=None):
+    return json.dumps({"board": _browser_game.board.tolist(), "score": int(_browser_game.score), "moves": int(_browser_game.moves), "maxTile": int(_browser_game.max_tile), "over": not selfplay_ai.can_move(_browser_game.board), "spawned": spawned})
 def browser_set_state(board, score, moves):
-    _browser_game.board = selfplay_ai.np.array(board, dtype=selfplay_ai.np.uint32)
+    _browser_game.board = selfplay_ai.np.asarray(board, dtype=selfplay_ai.np.uint32).reshape(4, 4).copy()
     _browser_game.score = int(score)
     _browser_game.moves = int(moves)
     return _browser_state()
@@ -247,18 +251,21 @@ def browser_new_game():
     _browser_game = selfplay_ai.Game2048()
     return _browser_state()
 def browser_move(action):
-    _browser_game.step(int(action))
-    return _browser_state()
+    before = _browser_game.board.copy()
+    moved, reward, terminal = _browser_game.step(int(action))
+    if not moved:
+        return _browser_state()
+    spawned_cells = selfplay_ai.np.flatnonzero((before == 0).reshape(-1) & (_browser_game.board != 0).reshape(-1))
+    spawned = None
+    if spawned_cells.size:
+        cell = int(spawned_cells[0])
+        spawned = {"r": cell // 4, "c": cell % 4, "value": int(_browser_game.board.reshape(-1)[cell])}
+    return _browser_state(spawned)
 def browser_plan():
     if not selfplay_ai.can_move(_browser_game.board):
         return json.dumps({"action": None})
-    action = int(_browser_agent.choose_action(_browser_game.board.copy()))
+    action = int(_browser_agent.choose_action(_browser_game.board))
     return json.dumps({"action": action})
-def browser_ai_move(action):
-    if not selfplay_ai.can_move(_browser_game.board):
-        return _browser_state()
-    _browser_game.step(int(action))
-    return _browser_state()
 `);engineReady=true;await pythonState("browser_set_state",JSON.stringify(currentState.board)+","+currentState.score+","+currentState.moves);say("Ready.");updateTells();if(aiControl)planNextMove();}catch(e){console.error(e);say("Ready.");updateTells();}}
 buttons.forEach(b=>b.disabled=false);start();
 </script></body></html>
