@@ -61,7 +61,6 @@ function calculateMove(state,action){
  return changed?{board,records,gained}:null;
 }
 function spawnInto(board){const empty=[];for(let r=0;r<4;r++)for(let c=0;c<4;c++)if(!board[r][c])empty.push([r,c]);if(!empty.length)return null;const [r,c]=empty[Math.floor(Math.random()*empty.length)],value=Math.random()<0.1?4:2;board[r][c]=value;return {r,c,value};}
-let pythonSync=Promise.resolve();
 async function performMove(action){
  if(!currentState||busy||currentState.over)return false;
  const visual=calculateMove(currentState,action);if(!visual)return false;
@@ -252,10 +251,11 @@ def browser_new_game():
     return _browser_state()
 def browser_move(action):
     before = _browser_game.board.copy()
+    moved_board, _ = selfplay_ai.apply_action(before, int(action))
     moved, reward, terminal = _browser_game.step(int(action))
     if not moved:
         return _browser_state()
-    spawned_cells = selfplay_ai.np.flatnonzero((before == 0).reshape(-1) & (_browser_game.board != 0).reshape(-1))
+    spawned_cells = selfplay_ai.np.flatnonzero((moved_board == 0).reshape(-1) & (_browser_game.board != 0).reshape(-1))
     spawned = None
     if spawned_cells.size:
         cell = int(spawned_cells[0])
