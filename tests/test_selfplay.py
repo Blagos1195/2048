@@ -195,3 +195,26 @@ def test_multi_depth_evaluation_uses_same_seeds_without_learning():
     assert reports[0]["seconds"] >= 0
     assert np.array_equal(evaluator.weights, before)
     assert evaluator.updates == 0
+
+
+def test_multi_depth_evaluation_reports_separate_timings_and_progress(monkeypatch, capsys):
+    import selfplay_ai
+
+    def fake_play_game(agent, seed, train=False):
+        return {
+            "seed": seed, "score": 100 + seed % 10, "max_tile": 2048,
+            "moves": 100, "reached_2048": 1, "reached_4096": 0,
+            "reached_8192": 0, "td_abs_mean": 0.0, "search_nodes": 10,
+        }
+
+    monkeypatch.setattr(selfplay_ai, "play_game", fake_play_game)
+    reports = selfplay_ai.evaluate_depths(
+        NTupleValue(), games=2, depths=[1, 3], seed_start=1000,
+    )
+
+    assert [report["depth"] for report in reports] == [1, 3]
+    assert all(report["games"] == 2 for report in reports)
+    assert all(report["seconds"] >= 0 for report in reports)
+    output = capsys.readouterr().out
+    assert "EVAL PROGRESS depth=1 games=1/2" in output
+    assert "EVAL DEPTH COMPLETE depth=3 games=2" in output
