@@ -355,23 +355,39 @@ def evaluate_depths(
     evaluator: NTupleValue, games: int, depths: list[int], seed_start: int,
     pool=None,
 ) -> list[dict]:
-    """Evaluate every depth on identical seeds, sharing one process pool across all depths."""
-    started = time.perf_counter()
-    tasks = [(seed_start + i, depth) for depth in depths for i in range(games)]
-    if pool is not None:
-        rows = list(pool.map(_evaluate_game_worker, tasks))
-    else:
-        rows = []
-        for seed, depth in tasks:
-            agent = ExpectimaxAgent(evaluator, depth=depth, seed=seed)
-            rows.append(play_game(agent, seed, train=False))
-    elapsed = time.perf_counter() - started
+    """Evaluate each depth on identical seeds and report separate timings and progress."""
     reports = []
-    offset = 0
+    progress_interval = max(1, min(5, games))
     for depth in depths:
-        depth_rows = rows[offset:offset + games]
-        offset += games
-        reports.append(_summarise_evaluation(depth_rows, depth, elapsed))
+        started = time.perf_counter()
+        tasks = [(seed_start + i, depth) for i in range(games)]
+        if pool is not None:
+            results = pool.map(_evaluate_game_worker, tasks, chunksize=1)
+        else:
+            results = (
+                play_game(ExpectimaxAgent(evaluator, depth=depth, seed=seed), seed, train=False)
+                for seed, _ in tasks
+            )
+
+        rows = []
+        for completed, result in enumerate(results, start=1):
+            rows.append(result)
+            if completed == 1 or completed % progress_interval == 0 or completed == games:
+                elapsed = time.perf_counter() - started
+                print(
+                    f"EVAL PROGRESS depth={depth} games={completed}/{games} "
+                    f"elapsed={elapsed:.1f}s",
+                    flush=True,
+                )
+
+        elapsed = time.perf_counter() - started
+        report = _summarise_evaluation(rows, depth, elapsed)
+        reports.append(report)
+        print(
+            f"EVAL DEPTH COMPLETE depth={depth} games={games} "
+            f"seconds={elapsed:.1f} games_per_second={report['games_per_second']:.4f}",
+            flush=True,
+        )
     return reports
 
 
