@@ -218,3 +218,50 @@ def test_multi_depth_evaluation_reports_separate_timings_and_progress(monkeypatc
     output = capsys.readouterr().out
     assert "EVAL PROGRESS depth=1 games=1/2" in output
     assert "EVAL DEPTH COMPLETE depth=3 games=2" in output
+
+
+
+def test_expectimax_cache_reuses_transposed_states():
+    evaluator = NTupleValue(seed=29)
+    rng = np.random.default_rng(30)
+    evaluator.weights[:] = rng.normal(0.0, 0.01, evaluator.weights.shape).astype(np.float32)
+    agent = ExpectimaxAgent(evaluator, depth=1, seed=29)
+    board = np.array([
+        [2, 0, 4, 0],
+        [0, 8, 0, 0],
+        [0, 0, 0, 0],
+        [2, 0, 0, 0],
+    ], dtype=np.uint32)
+
+    direct = agent._chance(board.copy(), 0)
+    nodes = agent.nodes
+    transposed = agent._chance(board.T.copy(), 0)
+
+    assert transposed == pytest.approx(direct, abs=1e-6)
+    assert agent.nodes == nodes
+    assert agent.cache_hits == 1
+
+
+def test_expectimax_invalidates_cache_after_learning_update():
+    evaluator = NTupleValue(seed=31)
+    rng = np.random.default_rng(32)
+    evaluator.weights[:] = rng.normal(0.0, 0.01, evaluator.weights.shape).astype(np.float32)
+    agent = ExpectimaxAgent(evaluator, depth=1, seed=31)
+    board = np.array([
+        [2, 0, 4, 0],
+        [0, 8, 0, 0],
+        [0, 0, 0, 0],
+        [2, 0, 0, 0],
+    ], dtype=np.uint32)
+
+    first = agent._chance(board.copy(), 0)
+    old_nodes = agent.nodes
+    next_state = board.copy()
+    next_state[0, 1] = 2
+    evaluator.update(board, 1.0, next_state, terminal=True)
+
+    second = agent._chance(board.copy(), 0)
+    assert evaluator.updates == 1
+    assert agent.nodes > old_nodes
+    assert agent._cache_updates == evaluator.updates
+    assert first != pytest.approx(second, abs=1e-8)
