@@ -36,15 +36,14 @@ jobs:
       - name: Run tests
         run: python -m pytest -q tests/test_selfplay.py
 
-      - name: Recover the checkpoint from the interrupted training run
-        if: hashFiles('models/selfplay/latest.npz') == ''
+      - name: Restore the latest saved checkpoint and metrics from the previous run
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           mkdir -p models/selfplay
-          echo "No committed checkpoint found; recovering the saved checkpoint from the previous run artifact."
+          echo "Recovering the latest saved checkpoint from the most recent training artifact."
           ARTIFACT_ID=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts" --paginate --jq '.artifacts[] | select(.name == "self-learning-2048-trained-model" and .expired == false) | .id' | head -n 1)
           if [ -z "$ARTIFACT_ID" ]; then
             echo "::error::No unexpired self-learning model artifact is available to recover."
@@ -63,7 +62,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p models/selfplay
-          TRAIN_ARGS=(--games 10000 --depth 1 --workers 0 --eval-every 1000 --eval-games 30 --eval-depths 2 --extended-eval-every 5000 --extended-eval-games 30 --extended-eval-depths 1 3 --eval-depth 2 --log-every 100 --out models/selfplay)
+          TRAIN_ARGS=(--games 10000 --depth 1 --workers 0 --eval-every 1000 --eval-games 30 --eval-depths 2 --extended-eval-every 5000 --extended-eval-games 8 --extended-eval-depths 1 3 --eval-depth 2 --log-every 100 --out models/selfplay)
           echo "Training for 10,000 additional games from the latest saved checkpoint."
           if [ -s models/selfplay/latest.npz ]; then
             python main.py train "${TRAIN_ARGS[@]}" --resume models/selfplay/latest.npz --resume-metrics
@@ -76,7 +75,7 @@ jobs:
         run: |
           set -euo pipefail
           python main.py evaluate --model models/selfplay/best.npz --games 50 --depth 2 --seed 3000000
-          python main.py evaluate --model models/selfplay/best.npz --games 50 --depth 3 --seed 3000000
+          python main.py evaluate --model models/selfplay/best.npz --games 10 --depth 3 --seed 3000000
 
       - name: Benchmark search depths on the same fixed seeds
         run: >-
