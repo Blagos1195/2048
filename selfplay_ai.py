@@ -8,6 +8,7 @@ import random
 import time
 import os
 from collections import OrderedDict
+from functools import lru_cache
 try:
     from concurrent.futures import ProcessPoolExecutor
 except ImportError:  # Browser runtimes do not provide process pools.
@@ -45,24 +46,34 @@ def exponent_board(board: np.ndarray) -> np.ndarray:
     return out
 
 
+@lru_cache(maxsize=65536)
+def _slide_row(values: tuple[int, int, int, int]) -> tuple[tuple[int, int, int, int], int]:
+    """Cached 2048 row transition; identical rows occur constantly during search."""
+    compact = [value for value in values if value]
+    merged: list[int] = []
+    gained = 0
+    i = 0
+    while i < len(compact):
+        if i + 1 < len(compact) and compact[i] == compact[i + 1]:
+            value = compact[i] * 2
+            merged.append(value)
+            gained += value
+            i += 2
+        else:
+            merged.append(compact[i])
+            i += 1
+    merged.extend([0] * (4 - len(merged)))
+    return (merged[0], merged[1], merged[2], merged[3]), gained
+
+
 def slide_left(board: np.ndarray) -> tuple[np.ndarray, int]:
-    """Pure 2048 left slide; a newly merged tile cannot merge a second time."""
+    """Pure 2048 left slide using a bounded cache of four-cell row transitions."""
     out = np.zeros((4, 4), dtype=np.uint32)
     gained = 0
     for r in range(4):
-        values = [int(v) for v in board[r] if v]
-        merged: list[int] = []
-        i = 0
-        while i < len(values):
-            if i + 1 < len(values) and values[i] == values[i + 1]:
-                value = values[i] * 2
-                merged.append(value)
-                gained += value
-                i += 2
-            else:
-                merged.append(values[i])
-                i += 1
-        out[r, :len(merged)] = merged
+        row, row_score = _slide_row(tuple(int(v) for v in board[r]))
+        out[r] = row
+        gained += row_score
     return out, gained
 
 
@@ -188,7 +199,7 @@ class NTupleValue:
 
 
 class ExpectimaxAgent:
-    """Expectimax with bounded cross-turn caching and iterative deepening."""
+    """Expectimax with bounded cross-turn and row-transition caching."""
     def __init__(
         self,
         evaluator: NTupleValue,
@@ -250,11 +261,9 @@ class ExpectimaxAgent:
         self.nodes = 0
         self.cache_hits = 0
 
-        # Iterative deepening leaves a usable shallower result if a future time
-        # budget is introduced, and its earlier passes warm the deeper search.
-        scored = []
-        for current_depth in range(1, self.depth + 1):
-            scored = [(self._player(board, current_depth, a), a) for a in actions]
+        # Evaluate only the requested depth. Earlier iterative-deepening passes
+        # were discarded, adding substantial work without affecting the chosen move.
+        scored = [(self._player(board, self.depth, a), a) for a in actions]
         best = max(v for v, _ in scored)
         return self.rng.choice([a for v, a in scored if abs(v - best) < 1e-9])
 
