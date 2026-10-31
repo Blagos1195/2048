@@ -51,7 +51,7 @@ def test_full_board_with_no_pairs_is_terminal():
 def test_feature_indices_and_value_are_valid():
     board = np.array([[0, 2, 4, 8], [16, 32, 64, 128], [256, 512, 1024, 2048], [4096, 8192, 16384, 32768]])
     indices = pattern_indices(board)
-    assert indices.shape == (17,)
+    assert indices.shape == (26,)
     assert np.all(indices >= 0)
     assert np.all(indices < 16 ** 4)
     assert exponent_board(board)[0].tolist() == [0, 1, 2, 3]
@@ -345,8 +345,8 @@ def test_legacy_eight_pattern_checkpoint_migrates_without_losing_weights(tmp_pat
 def test_local_square_patterns_are_included_and_transpose_invariant():
     from selfplay_ai import PATTERNS, pattern_indices
 
-    assert len(PATTERNS) == 17
-    assert len(PATTERNS[8:]) == 9
+    assert len(PATTERNS) == 26
+    assert len(PATTERNS[8:]) == 18
     board = np.array([
         [2, 4, 8, 16],
         [32, 64, 128, 256],
