@@ -107,11 +107,11 @@ class Game2048:
         self._spawn()
 
     def _spawn(self) -> None:
-        empty = np.argwhere(self.board == 0)
+        empty = np.flatnonzero(self.board.reshape(-1) == 0)
         if len(empty) == 0:
             return
-        r, c = empty[self.rng.randrange(len(empty))]
-        self.board[int(r), int(c)] = 4 if self.rng.random() < 0.1 else 2
+        cell = int(empty[self.rng.randrange(len(empty))])
+        self.board.reshape(-1)[cell] = 4 if self.rng.random() < 0.1 else 2
 
     def step(self, action: int) -> tuple[bool, int, bool]:
         new_board, reward = apply_action(self.board, action)
@@ -283,19 +283,20 @@ class ExpectimaxAgent:
             result = self.evaluator.expected_spawn_value(board)
             self._cache_set(self._chance_cache, key, result)
             return result
-        empty = np.argwhere(board == 0)
+        flat = board.reshape(-1)
+        empty = np.flatnonzero(flat == 0)
         if len(empty) == 0:
             result = self.evaluator.value(board) if can_move(board) else -2.0
             self._cache_set(self._chance_cache, key, result)
             return result
         total = 0.0
-        for r, c in empty:
-            r, c = int(r), int(c)
-            board[r, c] = 2
+        for cell_index in empty:
+            cell = int(cell_index)
+            flat[cell] = 2
             total += 0.9 * self._best_player(board, depth)
-            board[r, c] = 4
+            flat[cell] = 4
             total += 0.1 * self._best_player(board, depth)
-            board[r, c] = 0
+            flat[cell] = 0
         result = total / len(empty)
         self._cache_set(self._chance_cache, key, result)
         return result
