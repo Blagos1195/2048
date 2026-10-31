@@ -6,7 +6,6 @@ import sys
 
 AI_COMMANDS = {"train", "evaluate", "benchmark"}
 
-
 def show_help() -> None:
     print("""2048 SELF-LEARNING AI
 =====================
@@ -94,7 +93,6 @@ That starts training with the default settings. You can explore the other
 commands once you have a saved model.
 """)
 
-
 def main() -> None:
     argv = sys.argv[1:]
 
@@ -141,7 +139,6 @@ def main() -> None:
     if args.model:
         sys.argv.extend(["--model", args.model])
     ui_main()
-
 
 if __name__ == "__main__":
     try:
