@@ -35,8 +35,8 @@ jobs:
           unzip -o /tmp/selfplay-model.zip -d /tmp/selfplay-model
           MODEL=/tmp/selfplay-model/latest.npz
           test -s "$MODEL"
-          git show 21c9a6d3afb894c69c436160e918bf62d658ebc7:selfplay_ai.py > /tmp/selfplay-before/selfplay_ai.py
-          git show 21c9a6d3afb894c69c436160e918bf62d658ebc7:main.py > /tmp/selfplay-before/main.py
+          git show e3b8103baaa10e8752eaf039f9f9533451c1f7bb:selfplay_ai.py > /tmp/selfplay-before/selfplay_ai.py
+          git show e3b8103baaa10e8752eaf039f9f9533451c1f7bb:main.py > /tmp/selfplay-before/main.py
           cp "$MODEL" /tmp/selfplay-model/latest.npz
           echo "=== BEFORE OPTIMISATION ==="
           (cd /tmp/selfplay-before && python main.py evaluate --model "$MODEL" --games 20 --depth 2 --seed 5200000 --workers 1) | tee /tmp/before.txt
