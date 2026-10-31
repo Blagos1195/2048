@@ -25,10 +25,18 @@ ACTIONS = (0, 1, 2, 3)  # left, down, right, up
 ACTION_NAMES = ("LEFT", "DOWN", "RIGHT", "UP")
 TILE_EXPONENT_CAP = 15
 BASE = TILE_EXPONENT_CAP + 1
-PATTERNS = tuple(
+# Eight full rows/columns capture long-range ordering. Nine overlapping 2x2
+# squares add local adjacency and corner structure without discarding old features.
+LINE_PATTERNS = (
     [tuple(r * 4 + c for c in range(4)) for r in range(4)]
     + [tuple(r * 4 + c for r in range(4)) for c in range(4)]
 )
+SQUARE_PATTERNS = [
+    tuple((r + dr) * 4 + c + dc for dr in range(2) for dc in range(2))
+    for r in range(3) for c in range(3)
+]
+PATTERNS = tuple(LINE_PATTERNS + SQUARE_PATTERNS)
+LEGACY_PATTERN_COUNT = len(LINE_PATTERNS)
 PATTERN_COUNT = len(PATTERNS)
 PATTERN_TABLE_SIZE = BASE ** 4
 PATTERN_MEMBERSHIP = {cell: [] for cell in range(16)}
@@ -190,9 +198,15 @@ class NTupleValue:
     def load(self, path: str | Path) -> None:
         with np.load(path, allow_pickle=False) as data:
             weights = data["weights"]
-            if weights.shape != self.weights.shape:
+            if weights.shape == self.weights.shape:
+                self.weights[:] = weights
+            elif weights.shape == (LEGACY_PATTERN_COUNT, PATTERN_TABLE_SIZE):
+                # Upgrade existing 8-pattern checkpoints in place: preserve all
+                # learned row/column weights and initialise new 2x2 features at 0.
+                self.weights.fill(0.0)
+                self.weights[:LEGACY_PATTERN_COUNT] = weights
+            else:
                 raise ValueError(f"Incompatible checkpoint shape: {weights.shape}")
-            self.weights[:] = weights
             self.alpha = float(data["alpha"])
             self.gamma = float(data["gamma"])
             self.updates = int(data["updates"])
