@@ -735,7 +735,7 @@ depth 2 can play better but takes considerably longer.""",
                    help="discount factor for future value; closer to 1 values future states more")
     t.add_argument("--epsilon", type=float, default=0.20,
                    help="starting chance of choosing a random legal move to explore")
-    t.add_argument("--min-epsilon", type=float, default=0.02,
+    t.add_argument("--min-epsilon", type=float, default=0.05,
                    help="lowest exploration chance after epsilon decays")
     t.add_argument("--epsilon-decay", type=float, default=0.99995,
                    help="multiplier applied to exploration after each game; closer to 1 decays slower")
