@@ -11,22 +11,21 @@ from collections import OrderedDict
 from functools import lru_cache
 try:
     from concurrent.futures import ProcessPoolExecutor
-except ImportError:  # Browser runtimes do not provide process pools.
+except ImportError:
     ProcessPoolExecutor = None
 try:
     from multiprocessing import shared_memory
-except ImportError:  # Shared memory is only needed by desktop parallel training.
+except ImportError:
     shared_memory = None
 from pathlib import Path
 
 import numpy as np
 
-ACTIONS = (0, 1, 2, 3)  # left, down, right, up
+ACTIONS = (0, 1, 2, 3)
 ACTION_NAMES = ("LEFT", "DOWN", "RIGHT", "UP")
 TILE_EXPONENT_CAP = 15
 BASE = TILE_EXPONENT_CAP + 1
-# Eight full rows/columns capture long-range ordering. Both orientations of nine
-# overlapping 2x2 squares add local structure while preserving transpose symmetry.
+
 LINE_PATTERNS = (
     [tuple(r * 4 + c for c in range(4)) for r in range(4)]
     + [tuple(r * 4 + c for r in range(4)) for c in range(4)]
@@ -48,9 +47,6 @@ for _p, _cells in enumerate(PATTERNS):
     for _pos, _cell in enumerate(_cells):
         PATTERN_MEMBERSHIP[_cell].append((_p, _pos))
 
-
-# Boards contain powers of two, so a small lookup table avoids repeated log2 calls
-# in the hottest part of Expectimax. Values above the cap map to exponent 15.
 _TILE_EXPONENT_LOOKUP = np.minimum(
     np.rint(np.log2(np.maximum(np.arange((1 << TILE_EXPONENT_CAP) + 1), 1))),
     TILE_EXPONENT_CAP,
@@ -61,7 +57,6 @@ def exponent_board(board: np.ndarray) -> np.ndarray:
     """Convert tile values into exponents using a lookup table."""
     values = np.asarray(board)
     return _TILE_EXPONENT_LOOKUP[np.minimum(values, 1 << TILE_EXPONENT_CAP).astype(np.intp)]
-
 
 @lru_cache(maxsize=65536)
 def _slide_row(values: tuple[int, int, int, int]) -> tuple[tuple[int, int, int, int], int]:
@@ -82,7 +77,6 @@ def _slide_row(values: tuple[int, int, int, int]) -> tuple[tuple[int, int, int, 
     merged.extend([0] * (4 - len(merged)))
     return (merged[0], merged[1], merged[2], merged[3]), gained
 
-
 def slide_left(board: np.ndarray) -> tuple[np.ndarray, int]:
     """Pure 2048 left slide using a bounded cache of four-cell row transitions."""
     out = np.zeros((4, 4), dtype=np.uint32)
@@ -93,7 +87,6 @@ def slide_left(board: np.ndarray) -> tuple[np.ndarray, int]:
         gained += row_score
     return out, gained
 
-
 def apply_action(board: np.ndarray, action: int) -> tuple[np.ndarray, int]:
     """Return the resulting board and merge score for 0=left, 1=down, 2=right, 3=up."""
     if action not in ACTIONS:
@@ -102,16 +95,13 @@ def apply_action(board: np.ndarray, action: int) -> tuple[np.ndarray, int]:
     moved, score = slide_left(rotated)
     return np.rot90(moved, action).copy(), score
 
-
 def legal_actions(board: np.ndarray) -> list[int]:
     return [a for a in ACTIONS if not np.array_equal(apply_action(board, a)[0], board)]
-
 
 def can_move(board: np.ndarray) -> bool:
     if np.any(board == 0):
         return True
     return bool(np.any(board[:, :-1] == board[:, 1:]) or np.any(board[:-1, :] == board[1:, :]))
-
 
 class Game2048:
     """Fast headless simulator with reproducible per-game randomness."""
@@ -144,9 +134,6 @@ class Game2048:
     def max_tile(self) -> int:
         return int(self.board.max())
 
-
-# Precompute pattern cell positions and base-16 place values. This replaces
-# 104 Python-level indexing/loop iterations for every board evaluation.
 _PATTERN_CELLS = np.asarray(PATTERNS, dtype=np.intp)
 _PATTERN_PLACE_VALUES = np.asarray((BASE ** 3, BASE ** 2, BASE, 1), dtype=np.int32)
 
@@ -154,7 +141,6 @@ def pattern_indices(board: np.ndarray) -> np.ndarray:
     exponents = exponent_board(board).reshape(-1)
     selected = exponents[_PATTERN_CELLS].astype(np.int32, copy=False)
     return selected @ _PATTERN_PLACE_VALUES
-
 
 class NTupleValue:
     """Learned board evaluator; weights start at zero and change via real TD updates."""
@@ -210,8 +196,7 @@ class NTupleValue:
             if weights.shape == self.weights.shape:
                 self.weights[:] = weights
             elif weights.shape == (LEGACY_PATTERN_COUNT, PATTERN_TABLE_SIZE):
-                # Upgrade existing 8-pattern checkpoints in place: preserve all
-                # learned row/column weights and initialise new 2x2 features at 0.
+
                 self.weights.fill(0.0)
                 self.weights[:LEGACY_PATTERN_COUNT] = weights
             else:
@@ -219,7 +204,6 @@ class NTupleValue:
             self.alpha = float(data["alpha"])
             self.gamma = float(data["gamma"])
             self.updates = int(data["updates"])
-
 
 class ExpectimaxAgent:
     """Expectimax with bounded cross-turn and row-transition caching."""
@@ -241,23 +225,19 @@ class ExpectimaxAgent:
         self.epsilon = float(epsilon)
         self.nodes = 0
         self.cache_size = int(cache_size)
-        # These caches intentionally survive choose_action() calls, allowing LARP
-        # to reuse work from earlier turns. OrderedDict gives a bounded LRU cache.
+
         self._chance_cache: OrderedDict[tuple[bytes, int], float] = OrderedDict()
         self._player_cache: OrderedDict[tuple[bytes, int], float] = OrderedDict()
         self.cache_hits = 0
         self._cache_updates = evaluator.updates
 
     def _cache_key(self, board: np.ndarray, depth: int) -> tuple[bytes, int]:
-        # Learned values change during single-process training. Cached search
-        # results are only valid for the exact evaluator version that produced them.
+
         if self._cache_updates != self.evaluator.updates:
             self._chance_cache.clear()
             self._player_cache.clear()
             self._cache_updates = self.evaluator.updates
 
-        # Local 2x2 features are orientation-sensitive, so transposed boards
-        # must not share search values unless their learned features are tied.
         return (board.tobytes(), depth)
 
     def _cache_get(self, cache: OrderedDict, key):
@@ -282,8 +262,6 @@ class ExpectimaxAgent:
         self.nodes = 0
         self.cache_hits = 0
 
-        # Evaluate only the requested depth. Earlier iterative-deepening passes
-        # were discarded, adding substantial work without affecting the chosen move.
         scored = [(self._player(board, self.depth, a), a) for a in actions]
         best = max(v for v, _ in scored)
         return self.rng.choice([a for v, a in scored if abs(v - best) < 1e-9])
@@ -337,7 +315,6 @@ class ExpectimaxAgent:
         self._cache_set(self._player_cache, key, result)
         return result
 
-
 def play_game(agent: ExpectimaxAgent, seed: int, train: bool = False, max_moves: int = 10000) -> dict:
     game = Game2048(seed)
     td_abs = 0.0
@@ -366,7 +343,6 @@ def play_game(agent: ExpectimaxAgent, seed: int, train: bool = False, max_moves:
         "search_nodes": search_nodes,
     }
 
-
 def _summarise_evaluation(rows: list[dict], depth: int, seconds: float) -> dict:
     scores = np.asarray([r["score"] for r in rows], dtype=np.float64)
     tiles = np.asarray([r["max_tile"] for r in rows], dtype=np.float64)
@@ -380,7 +356,6 @@ def _summarise_evaluation(rows: list[dict], depth: int, seconds: float) -> dict:
         "seconds": float(seconds), "games_per_second": games / max(seconds, 1e-9),
     }
 
-
 def evaluate(evaluator: NTupleValue, games: int = 50, depth: int = 1, seed_start: int = 900_000) -> dict:
     started = time.perf_counter()
     rows = []
@@ -389,13 +364,11 @@ def evaluate(evaluator: NTupleValue, games: int = 50, depth: int = 1, seed_start
         rows.append(play_game(agent, seed_start + i, train=False))
     return _summarise_evaluation(rows, depth, time.perf_counter() - started)
 
-
 def _evaluate_game_worker(task: tuple[int, int]) -> dict:
     """Evaluate one game using the worker's read-only shared model snapshot."""
     seed, depth = task
     agent = ExpectimaxAgent(_WORKER_EVALUATOR, depth=depth, seed=seed)
     return play_game(agent, seed, train=False)
-
 
 def evaluate_depths(
     evaluator: NTupleValue, games: int, depths: list[int], seed_start: int,
@@ -436,7 +409,6 @@ def evaluate_depths(
         )
     return reports
 
-
 def evaluate_depths_parallel(
     evaluator: NTupleValue, games: int, depths: list[int], seed_start: int, workers: int,
 ) -> list[dict]:
@@ -457,12 +429,10 @@ def evaluate_depths_parallel(
         shm.close()
         shm.unlink()
 
-
 _WORKER_SHM = None
 _WORKER_WEIGHTS = None
 _WORKER_EVALUATOR = None
 _WORKER_DEPTH = 1
-
 
 def _init_parallel_worker(shm_name: str, shape: tuple[int, ...], alpha: float, gamma: float, depth: int):
     """Attach each worker to one read-only snapshot of the shared learned weights."""
@@ -478,7 +448,6 @@ def _init_parallel_worker(shm_name: str, shape: tuple[int, ...], alpha: float, g
     evaluator.updates = 0
     _WORKER_EVALUATOR = evaluator
     _WORKER_DEPTH = int(depth)
-
 
 def _collect_episode(task: tuple[int, float]) -> dict:
     """Generate one game against the current shared snapshot; learner updates happen in the parent."""
@@ -504,7 +473,6 @@ def _collect_episode(task: tuple[int, float]) -> dict:
         "reached_8192": int(game.max_tile >= 8192), "transitions": transitions,
     }
 
-
 def _apply_collected_episode(evaluator: NTupleValue, transitions: list) -> float:
     td_abs = 0.0
     count = 0
@@ -515,7 +483,6 @@ def _apply_collected_episode(evaluator: NTupleValue, transitions: list) -> float
         td_abs += abs(delta)
         count += 1
     return td_abs / max(count, 1)
-
 
 def train(args: argparse.Namespace) -> None:
     evaluator = NTupleValue(alpha=args.alpha, gamma=args.gamma, seed=args.seed)
@@ -672,7 +639,6 @@ def train(args: argparse.Namespace) -> None:
                 shm.close()
                 shm.unlink()
 
-
 def _collect_episode_local(evaluator: NTupleValue, seed: int, epsilon: float, depth: int) -> dict:
     """Single-process version of the same transition collection path."""
     game = Game2048(seed)
@@ -691,7 +657,6 @@ def _collect_episode_local(evaluator: NTupleValue, seed: int, epsilon: float, de
     return {"seed": seed, "score": game.score, "max_tile": game.max_tile, "moves": game.moves,
             "reached_2048": int(game.max_tile >= 2048), "reached_4096": int(game.max_tile >= 4096),
             "reached_8192": int(game.max_tile >= 8192), "transitions": transitions}
-
 
 def benchmark(evaluator: NTupleValue, games: int, depths: list[int], seed_start: int) -> None:
     """Compare search depths on identical deterministic game seeds."""
@@ -740,12 +705,10 @@ def evaluate_cli(args: argparse.Namespace) -> None:
     for key, value in report.items():
         print(f"{key}: {value}")
 
-
 def benchmark_cli(args: argparse.Namespace) -> None:
     evaluator = NTupleValue(seed=args.seed)
     evaluator.load(args.model)
     benchmark(evaluator, games=args.games, depths=args.depths, seed_start=args.seed)
-
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -871,7 +834,6 @@ def main() -> None:
     if args.command == "benchmark" and (args.games < 1 or not args.depths or min(args.depths) < 1):
         raise SystemExit("benchmark games and search depths must be >= 1")
     args.func(args)
-
 
 if __name__ == "__main__":
     main()
