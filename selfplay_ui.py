@@ -30,7 +30,6 @@ TILE_COLORS = {
 }
 ACTION_NAMES = ("LEFT", "DOWN", "RIGHT", "UP")
 
-
 def draw_board(screen, board, rect, font):
     x, y, w, h = rect
     pygame.draw.rect(screen, PANEL, rect, border_radius=8)
@@ -50,7 +49,6 @@ def draw_board(screen, board, rect, font):
                 label = tile_font.render(str(value), True, ink)
                 screen.blit(label, label.get_rect(center=(cx + cell / 2, cy + cell / 2)))
 
-
 def load_evaluator(path: str | None) -> NTupleValue:
     evaluator = NTupleValue()
     candidates = [Path(path)] if path else [
@@ -66,7 +64,6 @@ def load_evaluator(path: str | None) -> NTupleValue:
         "No self-learning checkpoint found. Train first with "
         "'python main.py --mode 0 --games 100000', or pass --model PATH."
     )
-
 
 def train_view(mode: int, games_target: int, depth: int, out: str, seed: int):
     pygame.init()
@@ -147,7 +144,6 @@ def train_view(mode: int, games_target: int, depth: int, out: str, seed: int):
     evaluator.save(out_path / "latest.npz", {"episodes": episode, "updates": evaluator.updates})
     pygame.quit()
 
-
 def showcase(mode: int, model: str | None, depth: int, seed: int):
     """Play a conventional-looking 2048 game with a precomputed AI move in LARP mode."""
     import threading
@@ -178,7 +174,6 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
     except (OSError, ValueError, TypeError):
         print("[View] Could not read player_stats.json; starting with fresh stats.")
 
-    # Restore the unfinished board as well as the saved statistics.
     saved_position = player_stats.pop("current_game", None)
     if isinstance(saved_position, dict):
         try:
@@ -207,8 +202,7 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
     current_game_recorded = False
     move_plan = {"board": None, "action": None, "busy": False}
     plan_lock = threading.Lock()
-    # A single worker processes only the latest requested board. This prevents
-    # spam-clicking/restarting from launching concurrent searches on one agent.
+
     worker_state = {
         "active": False,
         "version": 0,
@@ -251,14 +245,14 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                     if requested_board is None:
                         worker_state["active"] = False
                         return
-                    # Consume this request. Newer requests replace it while thinking.
+
                     worker_state["requested_board"] = None
                     worker_state["requested_key"] = None
 
                 try:
                     action = agent.choose_action(requested_board)
                 except Exception as exc:
-                    # Keep an AI/search failure from killing the UI event loop.
+
                     print(f"[View] AI move calculation failed: {exc}")
                     action = None
 
@@ -275,8 +269,7 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                             move_plan["board"] = None
                             move_plan["action"] = None
                             move_plan["busy"] = False
-                    # If another board was requested during this search, loop and
-                    # calculate only the newest request. Otherwise release worker.
+
                     if worker_state["requested_board"] is None:
                         worker_state["active"] = False
                         return
@@ -294,7 +287,7 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
             move_plan["busy"] = False
 
     def legal_actions_safe(board):
-        # Only accept a known legal action for the exact current board.
+
         return legal_actions(board)
 
     def save_best_score():
@@ -377,8 +370,7 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                 elif mode == 3 and info_rect.collidepoint(event.pos):
                     auto = not auto
                 elif mode == 4:
-                    # Tiny, deliberately unobtrusive control hotspots. The visible
-                    # markers are only a few pixels wide; the whole 18px area works.
+
                     ai_hotspot = pygame.Rect(width - 44, height - 22, 18, 18)
                     auto_hotspot = pygame.Rect(width - 23, height - 22, 18, 18)
                     if ai_hotspot.collidepoint(event.pos):
@@ -406,8 +398,7 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                     stats_visible = False
                     schedule_plan()
                 elif stats_visible and mode == 4:
-                    # Don't let keys intended to close/interact with the overlay
-                    # accidentally advance the hidden game.
+
                     continue
                 elif not game_over:
                     if mode == 3:
@@ -422,7 +413,7 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                             if ai_control and auto_move:
                                 schedule_plan()
                         elif not ai_control:
-                            # Ordinary 2048 controls: arrows or WASD only.
+
                             human_actions = {
                                 pygame.K_LEFT: 0, pygame.K_a: 0,
                                 pygame.K_DOWN: 1, pygame.K_s: 1,
@@ -443,7 +434,7 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                                     else:
                                         schedule_plan()
                         elif event.key in (pygame.K_SPACE, pygame.K_RETURN, pygame.K_KP_ENTER) and not auto_move:
-                            # Manual AI mode: only play a prepared move on explicit request.
+
                             with plan_lock:
                                 planned_board = move_plan["board"]
                                 planned_action = move_plan["action"]
@@ -482,7 +473,7 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                         schedule_plan()
 
         screen.fill(BG)
-        # Familiar 2048 header and compact score cards.
+
         screen.blit(title_font.render("2048", True, TEXT), (margin, 14))
         score_w = max(82, (width - margin * 2 - 8) // 2)
         score_x = width - margin - score_w * 2 - 8
@@ -513,8 +504,7 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
             hint_surface = tiny.render(footer_text, True, TEXT)
             screen.blit(hint_surface, hint_surface.get_rect(center=(width // 2, height - 12)))
         elif mode == 4:
-            # Nearly invisible status pixels: left = AI control, middle = auto,
-            # right = a valid move is waiting. Hotspots are larger than the pixels.
+
             with plan_lock:
                 ready = (ai_control
                          and move_plan["board"] == game.board.tobytes()
@@ -584,7 +574,6 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
     record_game()
     pygame.quit()
 
-
 def main():
     parser = argparse.ArgumentParser(description="Self-learning 2048 graphical modes")
     parser.add_argument("--mode", type=int, choices=range(1, 5), required=True)
@@ -598,7 +587,6 @@ def main():
         train_view(args.mode, args.games, args.depth, args.out, args.seed)
     else:
         showcase(args.mode, args.model, args.depth, args.seed)
-
 
 if __name__ == "__main__":
     try:
