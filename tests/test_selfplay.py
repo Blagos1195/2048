@@ -265,3 +265,57 @@ def test_expectimax_invalidates_cache_after_learning_update():
     assert agent.nodes > old_nodes
     assert agent._cache_updates == evaluator.updates
     assert first != pytest.approx(second, abs=1e-8)
+
+
+def test_cached_row_transitions_match_reference_for_random_boards():
+    rng = np.random.default_rng(41)
+
+    def reference_row(row):
+        values = [int(v) for v in row if v]
+        merged = []
+        gained = 0
+        i = 0
+        while i < len(values):
+            if i + 1 < len(values) and values[i] == values[i + 1]:
+                value = values[i] * 2
+                merged.append(value)
+                gained += value
+                i += 2
+            else:
+                merged.append(values[i])
+                i += 1
+        return merged + [0] * (4 - len(merged)), gained
+
+    for _ in range(250):
+        board = rng.choice([0, 2, 4, 8, 16, 32, 64], size=(4, 4)).astype(np.uint32)
+        expected = np.zeros((4, 4), dtype=np.uint32)
+        expected_score = 0
+        for row_index in range(4):
+            row, score = reference_row(board[row_index])
+            expected[row_index] = row
+            expected_score += score
+        actual, actual_score = slide_left(board)
+        assert np.array_equal(actual, expected)
+        assert actual_score == expected_score
+
+
+def test_expectimax_search_evaluates_only_requested_depth(monkeypatch):
+    evaluator = NTupleValue(seed=43)
+    agent = ExpectimaxAgent(evaluator, depth=3, seed=43)
+    board = np.array([
+        [2, 0, 4, 0],
+        [0, 8, 0, 0],
+        [0, 0, 0, 0],
+        [2, 0, 0, 0],
+    ], dtype=np.uint32)
+    calls = []
+
+    def fake_player(state, depth, action):
+        calls.append(depth)
+        return float(action)
+
+    monkeypatch.setattr(agent, "_player", fake_player)
+    action = agent.choose_action(board)
+    assert action in legal_actions(board)
+    assert calls
+    assert set(calls) == {3}
