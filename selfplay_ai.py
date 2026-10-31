@@ -527,10 +527,14 @@ def train(args: argparse.Namespace) -> None:
 
             while episode < args.games:
                 batch_size = 1 if workers == 1 else workers * 2
+                completed_absolute = episode_base + episode
+                next_boundaries = []
                 if args.eval_every:
-                    completed_absolute = episode_base + episode
-                    next_eval = ((completed_absolute // args.eval_every) + 1) * args.eval_every
-                    batch_size = min(batch_size, next_eval - completed_absolute)
+                    next_boundaries.append(((completed_absolute // args.eval_every) + 1) * args.eval_every)
+                if args.extended_eval_every:
+                    next_boundaries.append(((completed_absolute // args.extended_eval_every) + 1) * args.extended_eval_every)
+                if next_boundaries:
+                    batch_size = min(batch_size, min(next_boundaries) - completed_absolute)
                 batch_size = min(batch_size, args.games - episode)
                 tasks = []
                 for offset in range(1, batch_size + 1):
@@ -567,6 +571,17 @@ def train(args: argparse.Namespace) -> None:
                 if args.eval_every and (episode_base + episode) % args.eval_every == 0:
                     reports = evaluate_depths(evaluator, games=args.eval_games, depths=args.eval_depths,
                                               seed_start=args.eval_seed, pool=pool)
+                    is_extended_checkpoint = (
+                        args.extended_eval_every
+                        and (episode_base + episode) % args.extended_eval_every == 0
+                    )
+                    if is_extended_checkpoint:
+                        extra_depths = [d for d in args.extended_eval_depths if d not in args.eval_depths]
+                        if extra_depths:
+                            reports.extend(evaluate_depths(
+                                evaluator, games=args.extended_eval_games, depths=extra_depths,
+                                seed_start=args.eval_seed, pool=pool,
+                            ))
                     for report in reports:
                         print("EVAL " + " | ".join(f"{k}={v:.3f}" if isinstance(v, float) else f"{k}={v}"
                                                     for k, v in report.items()), flush=True)
@@ -713,7 +728,13 @@ depth 2 can play better but takes considerably longer.""",
     t.add_argument("--eval-games", type=int, default=50,
                    help="number of games per search depth at each evaluation checkpoint")
     t.add_argument("--eval-depths", type=int, nargs="+", default=[1, 2, 3, 4],
-                   help="search depths compared at each checkpoint")
+                   help="search depths compared at each regular checkpoint")
+    t.add_argument("--extended-eval-every", type=int, default=0,
+                   help="run additional search-depth evaluations every this many games; 0 disables them")
+    t.add_argument("--extended-eval-games", type=int, default=30,
+                   help="games per additional search depth at extended checkpoints")
+    t.add_argument("--extended-eval-depths", type=int, nargs="+", default=[1, 3],
+                   help="additional search depths tested at extended checkpoints")
     t.add_argument("--eval-depth", type=int, default=2,
                    help="fixed validation depth used to decide whether a checkpoint becomes best.npz")
     t.add_argument("--eval-seed", type=int, default=1_000_000,
@@ -777,6 +798,12 @@ def main() -> None:
         raise SystemExit("--eval-games must be >= 1")
     if args.command == "train" and args.eval_every < 0:
         raise SystemExit("--eval-every must be >= 0")
+    if args.command == "train" and args.extended_eval_every < 0:
+        raise SystemExit("--extended-eval-every must be >= 0")
+    if args.command == "train" and args.extended_eval_games < 1:
+        raise SystemExit("--extended-eval-games must be >= 1")
+    if args.command == "train" and (not args.extended_eval_depths or min(args.extended_eval_depths) < 1):
+        raise SystemExit("extended evaluation depths must be >= 1")
     if args.command in ("train", "evaluate") and args.workers < 0:
         raise SystemExit("--workers must be >= 0")
     if args.command == "benchmark" and (args.games < 1 or not args.depths or min(args.depths) < 1):
