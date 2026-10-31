@@ -251,11 +251,9 @@ class ExpectimaxAgent:
             self._player_cache.clear()
             self._cache_updates = self.evaluator.updates
 
-        # The row/column n-tuple evaluator is exactly transpose-invariant.
-        # Canonicalising this symmetry lets both orientations share cache entries.
-        direct = board.tobytes()
-        transposed = board.T.tobytes()
-        return (direct if direct <= transposed else transposed, depth)
+        # Local 2x2 features are orientation-sensitive, so transposed boards
+        # must not share search values unless their learned features are tied.
+        return (board.tobytes(), depth)
 
     def _cache_get(self, cache: OrderedDict, key):
         value = cache.get(key)
