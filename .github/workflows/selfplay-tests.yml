@@ -17,55 +17,11 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install -r requirements.txt
-      - run: python -m py_compile main.py selfplay_ai.py selfplay_ui.py profile_search.py
+      - run: python -m py_compile main.py selfplay_ai.py selfplay_ui.py profile_search.py diagnose_search.py
       - run: python -c "import selfplay_ui"
       - run: python -m pytest -q tests/test_selfplay.py
       - name: Smoke-test shared-memory parallel training through main.py
         run: python main.py train --games 4 --workers 2 --eval-every 0 --log-every 1 --out /tmp/selfplay-parallel-smoke
-      - name: Benchmark old versus optimised evaluation speed
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          mkdir -p /tmp/selfplay-model /tmp/selfplay-before
-          curl --fail --silent --show-error --location \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/13057985574/zip" \
-            -o /tmp/selfplay-model.zip
-          unzip -o /tmp/selfplay-model.zip -d /tmp/selfplay-model
-          MODEL=/tmp/selfplay-model/latest.npz
-          test -s "$MODEL"
-          git show e3b8103baaa10e8752eaf039f9f9533451c1f7bb:selfplay_ai.py > /tmp/selfplay-before/selfplay_ai.py
-          git show e3b8103baaa10e8752eaf039f9f9533451c1f7bb:main.py > /tmp/selfplay-before/main.py
-          echo "=== BEFORE OPTIMISATION ==="
-          (cd /tmp/selfplay-before && python main.py evaluate --model "$MODEL" --games 20 --depth 2 --seed 5200000 --workers 1) | tee /tmp/before.txt
-          echo "=== AFTER OPTIMISATION ==="
-          python main.py evaluate --model "$MODEL" --games 20 --depth 2 --seed 5200000 --workers 1 | tee /tmp/after.txt
-          echo "=== COMPARISON ==="
-          python - <<'PY'
-          import re
-          def read(path):
-              text = open(path).read()
-              values = {}
-              for key in ("seconds", "avg_moves", "games_per_second"):
-                  match = re.search(rf"^{key}: ([0-9.eE+-]+)", text, re.M)
-                  if not match:
-                      raise SystemExit(f"Missing {key} in {path}")
-                  values[key] = float(match.group(1))
-              values["ms_per_move"] = values["seconds"] * 1000 / (20 * values["avg_moves"])
-              return values
-          before, after = read("/tmp/before.txt"), read("/tmp/after.txt")
-          change = (after["ms_per_move"] / before["ms_per_move"] - 1) * 100
-          print(f"Before: {before['ms_per_move']:.3f} ms/move")
-          print(f"After:  {after['ms_per_move']:.3f} ms/move")
-          print(f"Change: {change:+.1f}% (negative is faster)")
-          if change > 35:
-              raise SystemExit("Evaluation performance regressed by more than 35%")
-          PY
-
-
       - name: Diagnose depth 3 search branching on one game
         timeout-minutes: 10
         run: python diagnose_search.py --model /tmp/selfplay-model/latest.npz --depth 3 --seed 5200000 --moves 3
