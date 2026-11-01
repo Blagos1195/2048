@@ -7,6 +7,7 @@ import csv
 import random
 import time
 import os
+import signal
 from collections import OrderedDict
 from functools import lru_cache
 try:
@@ -532,7 +533,13 @@ def _apply_collected_episode(evaluator: NTupleValue, transitions: list) -> float
         count += 1
     return td_abs / max(count, 1)
 
+def _handle_training_interrupt(signum, frame):
+    raise KeyboardInterrupt
+
+
 def train(args: argparse.Namespace) -> None:
+    if hasattr(signal, "SIGBREAK"):
+        signal.signal(signal.SIGBREAK, _handle_training_interrupt)
     evaluator = NTupleValue(alpha=args.alpha, gamma=args.gamma, seed=args.seed)
     episode_base = 0
     if args.resume:
