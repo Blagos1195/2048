@@ -4,7 +4,7 @@ import time
 
 import numpy as np
 
-from selfplay_ai import ExpectimaxAgent, NTupleValue
+from selfplay_ai import ExpectimaxAgent, NTupleValue, legal_actions
 
 BOARDS = [
     [[2, 4, 8, 16], [0, 0, 4, 8], [0, 2, 16, 32], [0, 0, 0, 2]],
@@ -22,8 +22,12 @@ def main():
     evaluator = NTupleValue(seed=1)
     timings = []
     nodes = []
+    tested_boards = 0
     for board_data in BOARDS:
         board = np.asarray(board_data, dtype=np.uint32)
+        if not legal_actions(board):
+            continue
+        tested_boards += 1
         for i in range(REPEATS):
             agent = ExpectimaxAgent(evaluator, depth=DEPTH, seed=i)
             started = time.perf_counter()
@@ -34,7 +38,7 @@ def main():
     ordered = sorted(timings)
     report = {
         "depth": DEPTH,
-        "boards": len(BOARDS),
+        "boards": tested_boards,
         "repeats_per_board": REPEATS,
         "samples": len(timings),
         "median_ms": statistics.median(timings),
