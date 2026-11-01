@@ -683,6 +683,7 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
         clock.tick(30 if mode == 3 else 60)
 
     record_game()
+    save_best_score()
     pygame.quit()
 
 def main():
