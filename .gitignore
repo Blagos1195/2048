@@ -8,3 +8,7 @@ __pycache__/
 
 # Test cache
 .pytest_cache/
+
+
+
+player_stats.json
