@@ -690,10 +690,9 @@ def train(args: argparse.Namespace) -> None:
             evaluator.save(out / "latest.npz", {"episodes": episode_base + args.games, "workers": workers})
             print(f"Training finished. Latest model: {out / 'latest.npz'}")
             print(f"Best evaluated model: {out / 'best.npz'}")
-        except KeyboardInterrupt:
-            print("\nTraining interrupted with Ctrl+C. No checkpoint was saved.", flush=True)
-        except SafeTrainingStop:
+        except (KeyboardInterrupt, SafeTrainingStop):
             f.flush()
+            evaluation_file.flush()
             metadata = {
                 "episodes": episode_base + episode,
                 "workers": workers,
