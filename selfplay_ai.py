@@ -594,6 +594,10 @@ def _init_parallel_worker(shm_name: str, shape: tuple[int, ...], alpha: float, g
     evaluator.gamma = float(gamma)
     evaluator.rng = np.random.default_rng(1)
     evaluator.updates = 0
+    evaluator._spawn_base = np.empty(PATTERN_COUNT * 4 * 16, dtype=np.float32)
+    evaluator._spawn_two = np.empty(PATTERN_COUNT * 4 * 16, dtype=np.float32)
+    evaluator._spawn_four = np.empty(PATTERN_COUNT * 4 * 16, dtype=np.float32)
+    evaluator._spawn_delta = np.empty(PATTERN_COUNT * 4 * 16, dtype=np.float32)
     _WORKER_EVALUATOR = evaluator
     _WORKER_DEPTH = int(depth)
 
