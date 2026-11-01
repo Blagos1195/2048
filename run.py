@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import signal
 import subprocess
 import sys
 import tkinter as tk
@@ -56,6 +58,8 @@ class Launcher:
         self.status = tk.StringVar(value="Ready")
         ttk.Separator(frame).pack(fill="x", pady=(18, 10))
         ttk.Label(frame, textvariable=self.status).pack(anchor="w")
+        self.stop_button = ttk.Button(frame, text="Stop training safely", command=self.stop_training, state="disabled")
+        self.stop_button.pack(anchor="w", pady=(8, 0))
         ttk.Label(
             frame,
             text="Training and test output appears in the terminal. Game windows open separately.",
@@ -288,7 +292,10 @@ class Launcher:
             self.hidden_for_game = True
             self.root.withdraw()
         try:
-            self.process = subprocess.Popen([sys.executable, *command], cwd=ROOT)
+            process_options = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {"start_new_session": True}
+            self.process = subprocess.Popen([sys.executable, *command], cwd=ROOT, **process_options)
+            self.training_process = len(command) > 1 and command[1] == "train"
+            self.stop_button.configure(state="normal" if self.training_process else "disabled")
         except OSError as exc:
             self.process = None
             self.restore_after_task()
@@ -304,6 +311,8 @@ class Launcher:
             self.root.after(500, self.check_process)
             return
         self.process = None
+        self.training_process = False
+        self.stop_button.configure(state="disabled")
         self.restore_after_task()
         if code == 0:
             self.status.set("Finished successfully.")
@@ -311,6 +320,19 @@ class Launcher:
             self.status.set(f"Finished with exit code {code}. See terminal output.")
             if not self.hidden_for_game:
                 messagebox.showwarning("Task finished", f"The task exited with code {code}. Check the terminal for details.", parent=self.root)
+
+    def stop_training(self):
+        if not self.process or self.process.poll() is not None or not getattr(self, "training_process", False):
+            return
+        self.stop_button.configure(state="disabled")
+        self.status.set("Stopping training safely and saving the latest checkpoint...")
+        try:
+            if os.name == "nt":
+                self.process.send_signal(signal.CTRL_BREAK_EVENT)
+            else:
+                os.killpg(self.process.pid, signal.SIGINT)
+        except ProcessLookupError:
+            pass
 
     def restore_after_task(self):
         if self.hidden_for_game:
