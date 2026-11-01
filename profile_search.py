@@ -60,7 +60,10 @@ def main() -> None:
     result = run_profile(args.model, args.depth, args.seed, args.moves, profiler)
 
     output = io.StringIO()
-    pstats.Stats(profiler, stream=output).strip_dirs().sort_stats("cumtime").print_stats(30)
+    stats = pstats.Stats(profiler, stream=output).strip_dirs()
+    stats.sort_stats("cumtime").print_stats(30)
+    output.write("\\n=== PROFILE BY SELF TIME ===\\n")
+    stats.sort_stats("tottime").print_stats(20)
     report = "\n".join(
         [*(f"{key}: {value}" for key, value in result.items()),
          "=== PROFILE BY CUMULATIVE TIME ===", output.getvalue()]
