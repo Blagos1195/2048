@@ -357,8 +357,8 @@ class ExpectimaxAgent:
         self.nodes = 0
         self.cache_size = int(cache_size)
 
-        self._chance_cache: OrderedDict[tuple[bytes, int], float] = OrderedDict()
-        self._player_cache: OrderedDict[tuple[bytes, int], float] = OrderedDict()
+        self._chance_cache: dict[tuple[bytes, int], float] = {}
+        self._player_cache: dict[tuple[bytes, int], float] = {}
         self.cache_hits = 0
         self._cache_updates = evaluator.updates
 
@@ -371,18 +371,16 @@ class ExpectimaxAgent:
 
         return (board.tobytes(), depth)
 
-    def _cache_get(self, cache: OrderedDict, key):
+    def _cache_get(self, cache: dict, key):
         value = cache.get(key)
         if value is not None:
-            cache.move_to_end(key)
             self.cache_hits += 1
         return value
 
-    def _cache_set(self, cache: OrderedDict, key, value: float) -> None:
+    def _cache_set(self, cache: dict, key, value: float) -> None:
         cache[key] = value
-        cache.move_to_end(key)
-        while len(cache) > self.cache_size:
-            cache.popitem(last=False)
+        if len(cache) > self.cache_size:
+            cache.pop(next(iter(cache)))
 
     def choose_action(self, board: np.ndarray) -> int:
         actions = legal_actions(board)
