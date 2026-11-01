@@ -35,7 +35,7 @@ jobs:
         run: >-
           python scripts/benchmark_search.py
           --model models/selfplay/best.npz
-          --games 2
+          --games 8
           --depths 1 2
           --seed 4200000
           --output artifacts/benchmark.csv
