@@ -154,10 +154,12 @@ def _action_line(board: np.ndarray, action: int, line: int) -> tuple[tuple[tuple
     return cells, (int(flat[i0]), int(flat[i1]), int(flat[i2]), int(flat[i3]))
 
 
-def _apply_action_into(board: np.ndarray, action: int, out: np.ndarray) -> tuple[int, bool]:
+def _apply_action(board: np.ndarray, action: int) -> tuple[np.ndarray, int, bool]:
     if action not in ACTIONS:
         raise ValueError("action must be 0=left, 1=down, 2=right, or 3=up")
+    board = np.asarray(board)
     flat = board.reshape(-1)
+    out = np.empty((4, 4), dtype=np.uint32)
     out_flat = out.reshape(-1)
     gained = 0
     changed = False
@@ -168,12 +170,6 @@ def _apply_action_into(board: np.ndarray, action: int, out: np.ndarray) -> tuple
         gained += score
         changed |= moved != values
         out_flat[i0], out_flat[i1], out_flat[i2], out_flat[i3] = moved
-    return gained, changed
-
-
-def _apply_action(board: np.ndarray, action: int) -> tuple[np.ndarray, int, bool]:
-    out = np.empty((4, 4), dtype=np.uint32)
-    gained, changed = _apply_action_into(np.asarray(board), action, out)
     return out, gained, changed
 
 
@@ -443,9 +439,8 @@ class ExpectimaxAgent:
             result = self.evaluator.value(board) if can_move(board) else -2.0
         else:
             best = -1e30
-            moved = np.empty((4, 4), dtype=np.uint32)
             for action in ACTIONS:
-                merge_score, changed = _apply_action_into(board, action, moved)
+                moved, merge_score, changed = _apply_action(board, action)
                 if not changed:
                     continue
                 value = merge_score / 128.0 + self._chance(moved, depth - 1)
