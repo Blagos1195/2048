@@ -228,7 +228,10 @@ if njit is not None:
             index = 0
             for position in range(4):
                 value = int(flat[pattern_cells[pattern, position]])
-                exponent = int(exponent_lookup[min(value, 1 << 15)])
+                lookup_index = value
+                if lookup_index > (1 << 15):
+                    lookup_index = 1 << 15
+                exponent = int(exponent_lookup[int(lookup_index)])
                 index += exponent * int(place_values[position])
             indices[pattern] = index
             base_value += float(weights[weight_offsets[pattern] + index])
