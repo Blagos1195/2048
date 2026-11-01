@@ -283,36 +283,27 @@ class NTupleValue:
         """Exact expected evaluator after one random spawn, without allocating child boards."""
         flat = np.asarray(board).reshape(-1)
         empty_mask = 0
-        indices = [0] * PATTERN_COUNT
-        exponents = [0] * 16
         for cell, value in enumerate(flat):
-            value = int(value)
             if value == 0:
                 empty_mask |= 1 << cell
-            else:
-                exponent = value.bit_length() - 1
-                exponents[cell] = min(exponent, TILE_EXPONENT_CAP)
         if empty_mask == 0:
             return self.value(board)
-        for pattern, cells in enumerate(PATTERNS):
-            index = 0
-            for position, cell in enumerate(cells):
-                index += exponents[cell] * int(_PATTERN_PLACE_VALUES[position])
-            indices[pattern] = index
+        indices = pattern_indices(board)
         weights = self.weights.reshape(-1)
-        base_value = 0.0
-        for pattern, index in enumerate(indices):
-            base_value += float(weights[int(_PATTERN_WEIGHT_OFFSETS[pattern]) + index])
-        total = empty_mask.bit_count() * base_value
-        for cell in range(16):
-            if empty_mask & (1 << cell):
-                for pattern, position in PATTERN_MEMBERSHIP[cell]:
-                    weight_index = int(_PATTERN_WEIGHT_OFFSETS[pattern]) + indices[pattern]
-                    increment = int(_PATTERN_INDEX_INCREMENTS[position])
-                    base = float(weights[weight_index])
-                    total += 0.9 * (float(weights[weight_index + increment]) - base)
-                    total += 0.1 * (float(weights[weight_index + 2 * increment]) - base)
-        return total / empty_mask.bit_count()
+        base_weight_indices = _PATTERN_WEIGHT_OFFSETS + indices
+        base_weights = weights[base_weight_indices]
+        base_value = float(base_weights.sum(dtype=np.float64))
+        patterns, positions = _empty_pattern_memberships(empty_mask)
+        membership_weight_indices = _PATTERN_WEIGHT_OFFSETS[patterns] + indices[patterns]
+        increments = _PATTERN_INDEX_INCREMENTS[positions]
+        base = weights[membership_weight_indices]
+        value_two = weights[membership_weight_indices + increments] - base
+        value_four = weights[membership_weight_indices + 2 * increments] - base
+        count = empty_mask.bit_count()
+        total = count * base_value
+        total += 0.9 * float(value_two.sum(dtype=np.float64))
+        total += 0.1 * float(value_four.sum(dtype=np.float64))
+        return total / count
 
     def update(self, state: np.ndarray, reward: float, next_state: np.ndarray, terminal: bool) -> float:
         """Semi-gradient TD(0): fit value to reward plus discounted next-state value."""
