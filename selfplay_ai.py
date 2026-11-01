@@ -73,7 +73,7 @@ def _build_row_transitions() -> tuple[tuple[tuple[int, int, int, int], int], ...
         i = 0
         while i < len(compact):
             if i + 1 < len(compact) and compact[i] == compact[i + 1]:
-                value = compact[i] * 2
+                value = compact[i] + 1
                 merged.append(value)
                 gained += 1 << value
                 i += 2
