@@ -395,10 +395,15 @@ class ExpectimaxAgent:
         if depth <= 0:
             result = self.evaluator.value(board) if can_move(board) else -2.0
         else:
-            actions = legal_actions(board)
-            if not actions:
-                return -2.0
-            result = max(self._player(board, depth, a) for a in actions)
+            best = -1e30
+            for action in ACTIONS:
+                moved, merge_score, changed = _apply_action(board, action)
+                if not changed:
+                    continue
+                value = merge_score / 128.0 + self._chance(moved, depth - 1)
+                if value > best:
+                    best = value
+            result = best
         self._cache_set(self._player_cache, key, result)
         return result
 
