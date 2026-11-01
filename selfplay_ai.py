@@ -239,7 +239,7 @@ class NTupleValue:
         base = self.weights[patterns, base_indices]
         value_two = self.weights[patterns, base_indices + increments] - base
         value_four = self.weights[patterns, base_indices + 2 * increments] - base
-        count = len(empty)
+        count = empty_mask.bit_count()
         total = count * base_value
         total += 0.9 * float(value_two.sum(dtype=np.float64))
         total += 0.1 * float(value_four.sum(dtype=np.float64))
