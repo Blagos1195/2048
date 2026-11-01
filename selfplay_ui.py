@@ -412,6 +412,17 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                             auto_move = not auto_move
                             if ai_control and auto_move:
                                 schedule_plan()
+                        elif event.key in (
+                            pygame.K_EQUALS, pygame.K_PLUS, pygame.K_KP_PLUS,
+                            pygame.K_MINUS, pygame.K_KP_MINUS,
+                        ):
+                            if event.key in (pygame.K_EQUALS, pygame.K_PLUS, pygame.K_KP_PLUS):
+                                new_depth = min(4, agent.depth + 1)
+                            else:
+                                new_depth = max(1, agent.depth - 1)
+                            if new_depth != agent.depth:
+                                agent = ExpectimaxAgent(evaluator, depth=new_depth, seed=seed)
+                                schedule_plan()
                         elif not ai_control:
 
                             human_actions = {
@@ -513,6 +524,8 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                          and move_plan["board"] == game.board.tobytes()
                          and move_plan["action"] in legal_actions_safe(game.board))
                 thinking = move_plan["busy"]
+            depth_text = tiny.render(f"Depth {agent.depth}  (+/- to change)", True, TEXT)
+            screen.blit(depth_text, depth_text.get_rect(center=(width // 2, height - 13)))
             pixel_y = height - 8
             pygame.draw.circle(screen, (130, 122, 113) if ai_control else (221, 213, 202),
                                (width - 35, pixel_y), 2)
