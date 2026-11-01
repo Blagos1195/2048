@@ -35,8 +35,8 @@ jobs:
         run: >-
           python scripts/benchmark_search.py
           --model models/selfplay/best.npz
-          --games 1
-          --depths 1 2 3
+          --games 2
+          --depths 1 2
           --seed 4200000
           --output artifacts/benchmark.csv
       - name: Profile expectimax search
@@ -45,7 +45,7 @@ jobs:
           --model models/selfplay/best.npz
           --depth 1
           --seed 5200000
-          --moves 8
+          --moves 100
           --output artifacts/profile.txt
       - name: Upload benchmark and profile reports
         if: always()
