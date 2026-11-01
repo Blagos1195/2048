@@ -36,13 +36,10 @@ jobs:
           commits=(
             2623b9e0a29a1daaef2f2ae0aee9956b3fabcaaa
             1d7dc1dad5079f7924d22017f3c86fc5a313f617
+            36ccf30897076f1071e679b10f3b50456c8940e7
+            205ef222cd7f39f4c6c1b535121d2902d99ee106
+            9152f6169807f9ded7222a803583fce92c0f3b83
             0e23de6c2253c540633643c9d30d77525a1acf82
-            aa2fcef7c7c379ff8d8b69bb886f45904f318a3f
-            cff6bcc6e34ec62201f6e9cfd1c820be19e6b572
-            6720f8b364c5395729e8a0bd3d59f2bb5a7ac3f8
-            577a403b205011a46d9b3296c31c0606cebf6e38
-            1800ea083c4db3852b2d44e7041416d6d9cd9d28
-            e8ca7e6d87460b3f6a24016f4966ad58e8ab7e9e
           )
           mkdir -p benchmark-results
           for sha in "${commits[@]}"; do
