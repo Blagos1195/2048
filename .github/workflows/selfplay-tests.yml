@@ -63,7 +63,7 @@ jobs:
           print(f"Change: {change:+.1f}% (negative is faster)")
           PY
 
-      - name: Isolate the two pattern-indexing optimisations
+      - name: Profile Expectimax search hotspots\n        run: python profile_search.py --model /tmp/selfplay-model/latest.npz --depth 2 --seed 5200000 --moves 40\n\n      - name: Isolate the two pattern-indexing optimisations
         shell: bash
         run: |
           set -euo pipefail
