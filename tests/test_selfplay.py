@@ -438,3 +438,25 @@ def test_optimised_spawn_value_matches_explicit_enumeration_on_full_range():
                 child.flat[cell] = tile
                 expected += probability * evaluator.value(child) / len(empty)
         assert evaluator.expected_spawn_value(board) == pytest.approx(expected, abs=1e-6)
+
+
+def test_expectimax_leaf_uses_fast_terminal_check(monkeypatch):
+    import selfplay_ai
+
+    evaluator = NTupleValue(seed=163)
+    agent = ExpectimaxAgent(evaluator, depth=1, seed=163)
+    board = Game2048(163).board
+    monkeypatch.setattr(
+        selfplay_ai, "legal_actions",
+        lambda state: (_ for _ in ()).throw(AssertionError("leaf generated moves")),
+    )
+
+    assert agent._best_player(board, 0) == pytest.approx(evaluator.value(board))
+
+    terminal = np.array([
+        [2, 4, 8, 16],
+        [4, 8, 16, 2],
+        [8, 16, 2, 4],
+        [16, 2, 4, 8],
+    ], dtype=np.uint32)
+    assert agent._best_player(terminal, 0) == -2.0
