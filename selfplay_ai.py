@@ -297,12 +297,11 @@ class NTupleValue:
         membership_weight_indices = _PATTERN_WEIGHT_OFFSETS[patterns] + indices[patterns]
         increments = _PATTERN_INDEX_INCREMENTS[positions]
         base = weights[membership_weight_indices]
-        value_two = weights[membership_weight_indices + increments] - base
-        value_four = weights[membership_weight_indices + 2 * increments] - base
+        value_two = weights[membership_weight_indices + increments]
+        value_four = weights[membership_weight_indices + 2 * increments]
         count = empty_mask.bit_count()
-        total = count * base_value
-        total += 0.9 * float(value_two.sum(dtype=np.float64))
-        total += 0.1 * float(value_four.sum(dtype=np.float64))
+        delta = 0.9 * value_two + 0.1 * value_four - base
+        total = count * base_value + float(delta.sum(dtype=np.float64))
         return total / count
 
     def update(self, state: np.ndarray, reward: float, next_state: np.ndarray, terminal: bool) -> float:
