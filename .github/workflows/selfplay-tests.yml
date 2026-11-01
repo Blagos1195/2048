@@ -66,8 +66,9 @@ jobs:
           PY
 
 
-      - name: Compare depth 2 and depth 3 over 20 identical games
-        run: python main.py benchmark --model /tmp/selfplay-model/latest.npz --games 20 --depths 2 3 --seed 5200000
+      - name: Diagnose depth 3 search branching on one game
+        timeout-minutes: 10
+        run: python diagnose_search.py --model /tmp/selfplay-model/latest.npz --depth 3 --seed 5200000 --moves 3
 
       - name: Profile Expectimax search hotspots
         run: python profile_search.py --model /tmp/selfplay-model/latest.npz --depth 2 --seed 5200000 --moves 40
