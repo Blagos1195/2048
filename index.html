@@ -168,10 +168,10 @@ async function planNextMove(){
  planning=true;plannedAction=null;updateTells();
  try{
   const decisionStarted=performance.now();
-  const result=await pythonState("browser_plan");
+  const action=await pyodide.runPythonAsync("browser_plan()");
   console.debug("[2048] AI decision:",(performance.now()-decisionStarted).toFixed(1)+" ms");
   if(aiControl&&currentState&&!currentState.over&&JSON.stringify(currentState.board)===boardKey){
-   plannedAction=result.action;planBoardKey=boardKey;
+   plannedAction=action;planBoardKey=boardKey;
   }
  }catch(e){console.error(e);say("Could not prepare the next move.");}
  finally{planning=false;updateTells();}
@@ -260,9 +260,8 @@ def browser_move(action):
     return _browser_state(spawned)
 def browser_plan():
     if not selfplay_ai.can_move(_browser_game.board):
-        return json.dumps({"action": None})
-    action = int(_browser_agent.choose_action(_browser_game.board))
-    return json.dumps({"action": action})
+        return None
+    return int(_browser_agent.choose_action(_browser_game.board))
 `);engineReady=true;await pythonState("browser_set_state",JSON.stringify(currentState.board)+","+currentState.score+","+currentState.moves);say("Ready.");updateTells();if(aiControl)planNextMove();}catch(e){console.error(e);say("Ready.");updateTells();}}
 buttons.forEach(b=>b.disabled=false);start();
 </script></body></html>
