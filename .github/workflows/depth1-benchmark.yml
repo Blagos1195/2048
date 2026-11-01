@@ -1,0 +1,60 @@
+name: Depth 1 performance benchmark
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out benchmark runner
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Preserve benchmark script
+        run: cp benchmarks/benchmark_depth1.py /tmp/benchmark_depth1.py
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: python -m pip install numpy
+
+      - name: Benchmark recent commits
+        shell: bash
+        run: |
+          set -euo pipefail
+          commits=(
+            2623b9e0a29a1daaef2f2ae0aee9956b3fabcaaa
+            1d7dc1dad5079f7924d22017f3c86fc5a313f617
+            0e23de6c2253c540633643c9d30d77525a1acf82
+            aa2fcef7c7c379ff8d8b69bb886f45904f318a3f
+            cff6bcc6e34ec62201f6e9cfd1c820be19e6b572
+            6720f8b364c5395729e8a0bd3d59f2bb5a7ac3f8
+            577a403b205011a46d9b3296c31c0606cebf6e38
+            1800ea083c4db3852b2d44e7041416d6d9cd9d28
+            e8ca7e6d87460b3f6a24016f4966ad58e8ab7e9e
+          )
+          mkdir -p benchmark-results
+          for sha in "${commits[@]}"; do
+            echo "===== $sha ====="
+            git checkout --detach "$sha"
+            PYTHONPATH="$PWD" python /tmp/benchmark_depth1.py | tee -a benchmark-results/results.txt
+          done
+          git checkout main
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: depth1-benchmark-results
+          path: benchmark-results/results.txt
+          if-no-files-found: error
