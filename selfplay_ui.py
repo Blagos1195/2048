@@ -393,8 +393,20 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
         last_action = "Ready"
         schedule_plan()
 
+    def current_board_rect():
+        width, height = screen.get_size()
+        margin = max(12, min(22, width // 24))
+        header_h = 104
+        footer_h = 48
+        button_h = 38
+        gap = 10
+        board_size = max(180, min(width - margin * 2, height - header_h - footer_h - button_h - gap * 3))
+        board_x = (width - board_size) // 2
+        board_y = max(header_h, (height - board_size - footer_h - button_h - gap) // 2)
+        return pygame.Rect(board_x, board_y, board_size, board_size)
+
     def animate_move(previous, action):
-        board_rect = pygame.Rect(board_x, board_y, board_size, board_size)
+        board_rect = current_board_rect()
         started = time.perf_counter()
         duration = 0.115
         while True:
@@ -420,13 +432,13 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
     while running:
         width, height = screen.get_size()
         margin = max(12, min(22, width // 24))
-        header_h = 92
+        header_h = 104
         footer_h = 48
         button_h = 38
         gap = 10
         board_size = max(180, min(width - margin * 2, height - header_h - footer_h - button_h - gap * 3))
         board_x = (width - board_size) // 2
-        board_y = header_h + 12
+        board_y = max(header_h, (height - board_size - footer_h - button_h - gap) // 2)
         new_width = (width - margin * 2 - gap) // 2
         new_rect = pygame.Rect(margin, height - footer_h - button_h - 4, new_width, button_h)
         info_rect = pygame.Rect(new_rect.right + gap, new_rect.y, (width - margin * 2 - gap) // 2, button_h)
@@ -583,7 +595,9 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
 
         screen.fill(BG)
 
-        screen.blit(title_font.render("2048", True, TEXT), (margin, 14))
+        screen.blit(title_font.render("2048", True, TEXT), (margin, 8))
+        subtitle_font = pygame.font.SysFont("arial", 13, bold=True)
+        screen.blit(subtitle_font.render("JOIN THE TILES  •  REACH 2048", True, TEXT), (margin + 3, 72))
         score_w = 92
         score_x = width - margin - score_w * 2 - 8
         for i, (label, value) in enumerate((("SCORE", game.score), ("BEST", max(int(player_stats["highest_score"]), best_score, game.score)))):
