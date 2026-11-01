@@ -88,21 +88,21 @@ def _build_row_transitions() -> tuple[tuple[tuple[int, int, int, int], int], ...
 _ROW_TRANSITIONS = _build_row_transitions()
 
 
-@lru_cache(maxsize=65536)
 def _slide_row(values: tuple[int, int, int, int]) -> tuple[tuple[int, int, int, int], int]:
     """Use precomputed transitions for standard 2048 tiles and a general fallback otherwise."""
-    exponents = []
-    for value in values:
-        if value == 0:
-            exponents.append(0)
-            continue
-        exponent = value.bit_length() - 1
-        if exponent > 15 or value != 1 << exponent:
-            break
-        exponents.append(exponent)
-    else:
-        key = ((exponents[0] * 16 + exponents[1]) * 16 + exponents[2]) * 16 + exponents[3]
-        return _ROW_TRANSITIONS[key]
+    v0, v1, v2, v3 = values
+    e0 = 0 if v0 == 0 else v0.bit_length() - 1
+    e1 = 0 if v1 == 0 else v1.bit_length() - 1
+    e2 = 0 if v2 == 0 else v2.bit_length() - 1
+    e3 = 0 if v3 == 0 else v3.bit_length() - 1
+    if (
+        e0 <= 15 and e1 <= 15 and e2 <= 15 and e3 <= 15
+        and (v0 == 0 or v0 == 1 << e0)
+        and (v1 == 0 or v1 == 1 << e1)
+        and (v2 == 0 or v2 == 1 << e2)
+        and (v3 == 0 or v3 == 1 << e3)
+    ):
+        return _ROW_TRANSITIONS[((e0 * 16 + e1) * 16 + e2) * 16 + e3]
     compact = [value for value in values if value]
     merged = []
     gained = 0
