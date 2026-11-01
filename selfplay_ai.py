@@ -128,6 +128,11 @@ def legal_actions(board: np.ndarray) -> list[int]:
                 break
     return legal
 
+def can_move(board: np.ndarray) -> bool:
+    if np.any(board == 0):
+        return True
+    return bool(np.any(board[:, :-1] == board[:, 1:]) or np.any(board[:-1, :] == board[1:, :]))
+
 class Game2048:
     """Fast headless simulator with reproducible per-game randomness."""
     def __init__(self, seed: int | None = None):
