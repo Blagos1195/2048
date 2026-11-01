@@ -147,115 +147,6 @@ _ACTION_LINE_INDICES = tuple(
 )
 
 
-_ACTION_INDEX_ARRAY = np.asarray(_ACTION_LINE_INDICES, dtype=np.intp)
-
-try:
-    from numba import njit
-except ImportError:
-    njit = None
-
-
-if njit is not None:
-    @njit(cache=True)
-    def _slide_line_kernel(flat, indices):
-        values = np.empty(4, dtype=np.int64)
-        count = 0
-        for position in range(4):
-            value = int(flat[indices[position]])
-            if value:
-                values[count] = value
-                count += 1
-        moved = np.zeros(4, dtype=np.uint32)
-        score = 0
-        output = 0
-        position = 0
-        while position < count:
-            value = values[position]
-            if position + 1 < count and value == values[position + 1]:
-                value *= 2
-                score += value
-                position += 2
-            else:
-                position += 1
-            moved[output] = value
-            output += 1
-        return moved, score
-
-    @njit(cache=True)
-    def _apply_action_kernel(board, action, line_indices):
-        flat = board.reshape(16)
-        out = np.empty((4, 4), dtype=np.uint32)
-        out_flat = out.reshape(16)
-        gained = 0
-        changed = False
-        for line in range(4):
-            indices = line_indices[action, line]
-            moved, score = _slide_line_kernel(flat, indices)
-            gained += score
-            for position in range(4):
-                index = indices[position]
-                out_flat[index] = moved[position]
-                if int(moved[position]) != int(flat[index]):
-                    changed = True
-        return out, gained, changed
-
-    @njit(cache=True)
-    def _legal_actions_kernel(board, line_indices):
-        flat = board.reshape(16)
-        legal = np.empty(4, dtype=np.int64)
-        count = 0
-        for action in range(4):
-            for line in range(4):
-                indices = line_indices[action, line]
-                moved, _ = _slide_line_kernel(flat, indices)
-                changed = False
-                for position in range(4):
-                    if int(moved[position]) != int(flat[indices[position]]):
-                        changed = True
-                        break
-                if changed:
-                    legal[count] = action
-                    count += 1
-                    break
-        return legal[:count]
-
-    @njit(cache=True)
-    def _expected_spawn_value_kernel(board, weights, pattern_cells, place_values, weight_offsets, membership_patterns, membership_positions, increments, exponent_lookup):
-        flat = board.reshape(16)
-        indices = np.empty(pattern_cells.shape[0], dtype=np.int64)
-        base_value = 0.0
-        for pattern in range(pattern_cells.shape[0]):
-            index = 0
-            for position in range(4):
-                value = int(flat[pattern_cells[pattern, position]])
-                lookup_index = value
-                if lookup_index > (1 << 15):
-                    lookup_index = 1 << 15
-                exponent = int(exponent_lookup[int(lookup_index)])
-                index += exponent * int(place_values[position])
-            indices[pattern] = index
-            base_value += float(weights[weight_offsets[pattern] + index])
-        count = 0
-        for cell in range(16):
-            if flat[cell] == 0:
-                count += 1
-        if count == 0:
-            return base_value
-        total = count * base_value
-        value_two_sum = 0.0
-        value_four_sum = 0.0
-        for item in range(membership_patterns.shape[0]):
-            pattern = int(membership_patterns[item])
-            weight_index = int(weight_offsets[pattern] + indices[pattern])
-            increment = int(increments[membership_positions[item]])
-            base_weight = float(weights[weight_index])
-            value_two_sum += float(weights[weight_index + increment]) - base_weight
-            value_four_sum += float(weights[weight_index + 2 * increment]) - base_weight
-        total += 0.9 * value_two_sum
-        total += 0.1 * value_four_sum
-        return total / count
-
-
 def _action_line(board: np.ndarray, action: int, line: int) -> tuple[tuple[tuple[int, int], ...], tuple[int, int, int, int]]:
     cells = _ACTION_LINES[action][line]
     i0, i1, i2, i3 = _ACTION_LINE_INDICES[action][line]
@@ -267,8 +158,6 @@ def _apply_action(board: np.ndarray, action: int) -> tuple[np.ndarray, int, bool
     if action not in ACTIONS:
         raise ValueError("action must be 0=left, 1=down, 2=right, or 3=up")
     board = np.asarray(board)
-    if njit is not None:
-        return _apply_action_kernel(board, action, _ACTION_INDEX_ARRAY)
     flat = board.reshape(-1)
     out = np.empty((4, 4), dtype=np.uint32)
     out_flat = out.reshape(-1)
@@ -291,10 +180,7 @@ def apply_action(board: np.ndarray, action: int) -> tuple[np.ndarray, int]:
 
 
 def legal_actions(board: np.ndarray) -> list[int]:
-    board = np.asarray(board)
-    if njit is not None:
-        return _legal_actions_kernel(board, _ACTION_INDEX_ARRAY).tolist()
-    flat = board.reshape(-1)
+    flat = np.asarray(board).reshape(-1)
     legal = []
     for action in ACTIONS:
         for line in range(4):
@@ -402,18 +288,12 @@ class NTupleValue:
                 empty_mask |= 1 << cell
         if empty_mask == 0:
             return self.value(board)
-        patterns, positions = _empty_pattern_memberships(empty_mask)
-        if njit is not None:
-            return float(_expected_spawn_value_kernel(
-                board, self.weights.reshape(-1), _PATTERN_CELLS,
-                _PATTERN_PLACE_VALUES, _PATTERN_WEIGHT_OFFSETS,
-                patterns, positions, _PATTERN_INDEX_INCREMENTS,
-                _TILE_EXPONENT_LOOKUP,
-            ))
         indices = pattern_indices(board)
         weights = self.weights.reshape(-1)
         base_weight_indices = _PATTERN_WEIGHT_OFFSETS + indices
-        base_value = float(weights[base_weight_indices].sum(dtype=np.float64))
+        base_weights = weights[base_weight_indices]
+        base_value = float(base_weights.sum(dtype=np.float64))
+        patterns, positions = _empty_pattern_memberships(empty_mask)
         membership_weight_indices = _PATTERN_WEIGHT_OFFSETS[patterns] + indices[patterns]
         increments = _PATTERN_INDEX_INCREMENTS[positions]
         base = weights[membership_weight_indices]
@@ -424,6 +304,7 @@ class NTupleValue:
         total += 0.9 * float(value_two.sum(dtype=np.float64))
         total += 0.1 * float(value_four.sum(dtype=np.float64))
         return total / count
+
     def update(self, state: np.ndarray, reward: float, next_state: np.ndarray, terminal: bool) -> float:
         """Semi-gradient TD(0): fit value to reward plus discounted next-state value."""
         indices = pattern_indices(state)
