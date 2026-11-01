@@ -61,10 +61,44 @@ jobs:
           print(f"Before: {before['ms_per_move']:.3f} ms/move")
           print(f"After:  {after['ms_per_move']:.3f} ms/move")
           print(f"Change: {change:+.1f}% (negative is faster)")
+          if change > 35:
+              raise SystemExit("Evaluation performance regressed by more than 35%")
           PY
 
       - name: Profile Expectimax search hotspots
         run: python profile_search.py --model /tmp/selfplay-model/latest.npz --depth 2 --seed 5200000 --moves 40
+
+      - name: Benchmark the browser Pyodide engine
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/browser-bench
+          cp browser_benchmark.html selfplay_ai.py /tmp/browser-bench/
+          cp /tmp/selfplay-model/latest.npz /tmp/browser-bench/best.npz
+          python -m http.server 8765 --directory /tmp/browser-bench >/tmp/browser-server.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          npm install --no-save playwright
+          npx playwright install chromium
+          node --input-type=module <<'JS'
+          import { chromium } from "playwright";
+          const browser = await chromium.launch({ headless: true });
+          const page = await browser.newPage();
+          page.setDefaultTimeout(120000);
+          await page.goto("http://127.0.0.1:8765/browser_benchmark.html");
+          await page.waitForFunction(() => {
+            const result = document.querySelector("#result");
+            return result?.dataset.complete === "true" || result?.dataset.complete === "error";
+          }, { timeout: 180000 });
+          const result = await page.locator("#result").textContent();
+          console.log("=== BROWSER PYODIDE BENCHMARK ===");
+          console.log(result);
+          if (!result || result.includes('"moves": 0')) {
+            await browser.close();
+            throw new Error("Browser benchmark did not complete any moves");
+          }
+          await browser.close();
+          JS
 
       - name: Isolate the two pattern-indexing optimisations
         shell: bash
