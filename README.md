@@ -26,9 +26,11 @@ For the normal way to use the project, run:
 python run.py
 ```
 
-A menu lets you train a new AI, continue from the latest checkpoint, watch it play, use LARP mode, watch live training, evaluate a model, compare search depths, or run the tests. It automatically finds the saved model files, so you do not need to type their paths.
+This opens a graphical launcher with buttons for training, continuing training, watching the AI, LARP mode, live training, evaluation, comparisons, and tests. Each activity has its own settings window and confirmation screen, so you can configure it without memorising command-line arguments.
 
-Choose an option and answer the short prompts. Press Enter to accept the suggested defaults. Training can be stopped with Ctrl+C.
+Game modes open the 2048 game window. Closing the game returns you to the launcher. Training, evaluation, comparisons, and tests run as background tasks while their progress and output appear in the terminal. When they finish, the launcher is ready for the next task.
+
+The launcher uses Python's built-in Tkinter interface. On some Linux installations, Tkinter may need to be installed separately (often through the system package named `python3-tk`).
 
 The command-line options below are still available if you want more control.
 
@@ -97,28 +99,3 @@ These modes use pygame-ce and launch from the same entry point:
 - `python main.py --mode 2 --games 10000`: four-board training dashboard with slower animation.
 - `python main.py --mode 3 --model models/selfplay/best.npz --depth 2`: watch the trained AI play automatically.
 - `python main.py --mode 4 --model models/selfplay/best.npz --depth 2`: LARP mode. Press a key for the AI's next move, `R` to restart, and `Esc` or `Q` to quit.
-
-Modes 3 and 4 need a trained checkpoint. The program looks for `models/selfplay/best.npz` and then `latest.npz` if `--model` is omitted. Headless training does not require a display.
-
-## How it learns
-
-- **N-tuple TD learning:** eight overlapping four-cell row/column patterns estimate the long-term value of a board. The weights start at zero and update from observed transitions.
-- **Expectimax search:** evaluates legal moves and random 2/4 tile spawns using the learned value function.
-- **Self-play and exploration:** the agent generates games and gradually reduces random legal moves as training progresses.
-- **Evaluation and checkpoints:** training records scores, maximum tiles, move counts, exploration rate, TD error and update counts. It saves the latest model and the best model found during periodic evaluation.
-
-There are no fixed corner bonuses, snake-pattern bonuses, opening scripts, or preferred-move rules. The search predicts likely consequences, but its decisions are only as good as its learned value estimate and search depth.
-
-## Compute and performance
-
-The learner uses NumPy on CPU and collects games in parallel worker processes. Workers read a stable snapshot of the weights; the parent applies TD updates between batches. Expectimax caches repeated board/depth states during each move. There is no GPU acceleration because this n-tuple evaluator and branch-heavy search are CPU-oriented.
-
-More training and deeper search can improve decisions, but cost more compute. Depth 2 is much slower than depth 1, so evaluate the trade-off on your machine.
-
-## Output files
-
-- `models/selfplay/latest.npz`: latest learned value weights and metadata.
-- `models/selfplay/best.npz`: strongest model found by periodic evaluation.
-- `models/selfplay/training.csv`: per-game training metrics.
-
-The tests cover move and merge rules, terminal detection, deterministic seeds, pattern indexing, TD updates, legal action selection, and spawn expectation.
