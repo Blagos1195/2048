@@ -679,6 +679,20 @@ def train(args: argparse.Namespace) -> None:
             evaluator.save(out / "latest.npz", {"episodes": episode_base + args.games, "workers": workers})
             print(f"Training finished. Latest model: {out / 'latest.npz'}")
             print(f"Best evaluated model: {out / 'best.npz'}")
+        except KeyboardInterrupt:
+            f.flush()
+            metadata = {
+                "episodes": episode_base + episode,
+                "workers": workers,
+                "interrupted": True,
+            }
+            evaluator.save(out / "latest.npz", metadata)
+            print(
+                f"\nTraining stopped safely after {episode} additional games. "
+                f"Latest checkpoint saved to {out / 'latest.npz'}. "
+                f"Best checkpoint preserved at {out / 'best.npz'}.",
+                flush=True,
+            )
         finally:
             evaluation_file.close()
             if pool is not None:
