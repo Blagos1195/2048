@@ -59,11 +59,52 @@ def exponent_board(board: np.ndarray) -> np.ndarray:
     values = np.asarray(board)
     return _TILE_EXPONENT_LOOKUP[np.minimum(values, 1 << TILE_EXPONENT_CAP).astype(np.intp)]
 
+def _build_row_transitions() -> tuple[tuple[tuple[int, int, int, int], int], ...]:
+    transitions = []
+    for key in range(16 ** 4):
+        remaining = key
+        values = [0, 0, 0, 0]
+        for position in range(3, -1, -1):
+            values[position] = remaining % 16
+            remaining //= 16
+        compact = [value for value in values if value]
+        merged = []
+        gained = 0
+        i = 0
+        while i < len(compact):
+            if i + 1 < len(compact) and compact[i] == compact[i + 1]:
+                value = compact[i] * 2
+                merged.append(value)
+                gained += 1 << value
+                i += 2
+            else:
+                merged.append(compact[i])
+                i += 1
+        merged.extend([0] * (4 - len(merged)))
+        transitions.append((tuple(1 << value if value else 0 for value in merged), gained))
+    return tuple(transitions)
+
+
+_ROW_TRANSITIONS = _build_row_transitions()
+
+
 @lru_cache(maxsize=65536)
 def _slide_row(values: tuple[int, int, int, int]) -> tuple[tuple[int, int, int, int], int]:
-    """Cached 2048 row transition; identical rows occur constantly during search."""
+    """Use precomputed transitions for standard 2048 tiles and a general fallback otherwise."""
+    exponents = []
+    for value in values:
+        if value == 0:
+            exponents.append(0)
+            continue
+        exponent = value.bit_length() - 1
+        if exponent > 15 or value != 1 << exponent:
+            break
+        exponents.append(exponent)
+    else:
+        key = ((exponents[0] * 16 + exponents[1]) * 16 + exponents[2]) * 16 + exponents[3]
+        return _ROW_TRANSITIONS[key]
     compact = [value for value in values if value]
-    merged: list[int] = []
+    merged = []
     gained = 0
     i = 0
     while i < len(compact):
