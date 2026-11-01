@@ -250,16 +250,13 @@ def browser_new_game():
     _browser_game = selfplay_ai.Game2048()
     return _browser_state()
 def browser_move(action):
-    before = _browser_game.board.copy()
-    moved_board, _ = selfplay_ai.apply_action(before, int(action))
     moved, reward, terminal = _browser_game.step(int(action))
     if not moved:
         return _browser_state()
-    spawned_cells = selfplay_ai.np.flatnonzero((moved_board == 0).reshape(-1) & (_browser_game.board != 0).reshape(-1))
     spawned = None
-    if spawned_cells.size:
-        cell = int(spawned_cells[0])
-        spawned = {"r": cell // 4, "c": cell % 4, "value": int(_browser_game.board.reshape(-1)[cell])}
+    if _browser_game.last_spawn is not None:
+        r, c, value = _browser_game.last_spawn
+        spawned = {"r": r, "c": c, "value": value}
     return _browser_state(spawned)
 def browser_plan():
     if not selfplay_ai.can_move(_browser_game.board):
