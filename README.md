@@ -91,6 +91,27 @@ python main.py evaluate --help
 python main.py benchmark --help
 ```
 
+## Performance checks
+
+Run a repeatable comparison of search depths 1, 2, and 3 on the same model and
+fixed game seeds. The CSV includes score, tile, milestone-rate, and throughput
+metrics:
+
+```bash
+python scripts/benchmark_search.py --model models/selfplay/best.npz --games 1 --depths 1 2 3 --seed 4200000 --output artifacts/benchmark.csv
+```
+
+Profile expectimax/search with cProfile and save the cumulative-time summary as
+plain text:
+
+```bash
+python profile_search.py --model models/selfplay/best.npz --depth 1 --moves 8 --output artifacts/profile.txt
+```
+
+The GitHub Actions performance workflow runs these checks along with `python -m
+pytest -q`, a two-worker training smoke run, and a resume-from-checkpoint run.
+Benchmark and profile reports are uploaded as workflow artifacts.
+
 ## Graphical modes
 
 These modes use pygame-ce and launch from the same entry point:

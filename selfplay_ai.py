@@ -737,12 +737,12 @@ def _collect_episode_local(evaluator: NTupleValue, seed: int, epsilon: float, de
             "reached_2048": int(game.max_tile >= 2048), "reached_4096": int(game.max_tile >= 4096),
             "reached_8192": int(game.max_tile >= 8192), "transitions": transitions}
 
-def benchmark(evaluator: NTupleValue, games: int, depths: list[int], seed_start: int) -> None:
+def benchmark(evaluator: NTupleValue, games: int, depths: list[int], seed_start: int) -> list[dict]:
     """Compare search depths on identical deterministic game seeds."""
     reports = []
     for depth in depths:
         started = time.perf_counter()
-        rows = [play_game(ExpectimaxAgent(evaluator, depth=depth, seed=seed_start), seed_start + i)
+        rows = [play_game(ExpectimaxAgent(evaluator, depth=depth, seed=seed_start + i), seed_start + i)
                 for i in range(games)]
         elapsed = time.perf_counter() - started
         scores = np.asarray([row["score"] for row in rows], dtype=np.float64)
@@ -752,6 +752,7 @@ def benchmark(evaluator: NTupleValue, games: int, depths: list[int], seed_start:
             "games": games,
             "avg_score": float(scores.mean()),
             "median_score": float(np.median(scores)),
+            "best_max_tile": int(tiles.max()),
             "rate_2048": float(np.mean(tiles >= 2048)),
             "rate_4096": float(np.mean(tiles >= 4096)),
             "avg_max_tile": float(tiles.mean()),
@@ -773,6 +774,7 @@ def benchmark(evaluator: NTupleValue, games: int, depths: list[int], seed_start:
             speed_change = 100.0 * (report["games_per_second"] - base["games_per_second"]) / max(base["games_per_second"], 1e-9)
             print(f"DEPTH {report['depth']} VS DEPTH {base['depth']}: "
                   f"average score {score_change:+.1f}% | throughput {speed_change:+.1f}%", flush=True)
+    return reports
 
 def evaluate_cli(args: argparse.Namespace) -> None:
     evaluator = NTupleValue(seed=args.seed)
@@ -787,7 +789,15 @@ def evaluate_cli(args: argparse.Namespace) -> None:
 def benchmark_cli(args: argparse.Namespace) -> None:
     evaluator = NTupleValue(seed=args.seed)
     evaluator.load(args.model)
-    benchmark(evaluator, games=args.games, depths=args.depths, seed_start=args.seed)
+    reports = benchmark(evaluator, games=args.games, depths=args.depths, seed_start=args.seed)
+    if args.output:
+        output = Path(args.output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with output.open("w", newline="", encoding="utf-8") as file:
+            writer = csv.DictWriter(file, fieldnames=list(reports[0]))
+            writer.writeheader()
+            writer.writerows(reports)
+        print(f"Benchmark CSV written to {output}")
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -887,6 +897,8 @@ depth 2 can play better but takes considerably longer.""",
                    help="one or more search depths to compare, for example: --depths 1 2 3")
     b.add_argument("--seed", type=int, default=4_000_000,
                    help="starting random seed; each depth uses the same seeds")
+    b.add_argument("--output", default=None,
+                   help="optional CSV file for machine-readable benchmark metrics")
     b.set_defaults(func=benchmark_cli)
     return parser
 

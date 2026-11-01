@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import argparse
 import cProfile
-import pstats
 import io
+import pstats
+from pathlib import Path
 from selfplay_ai import ExpectimaxAgent, Game2048, NTupleValue, can_move
 
 
-def run_profile(model: str, depth: int, seed: int, moves: int) -> dict:
+def run_profile(model: str, depth: int, seed: int, moves: int, profiler: cProfile.Profile) -> dict:
     evaluator = NTupleValue()
     evaluator.load(model)
     game = Game2048(seed)
@@ -19,7 +20,11 @@ def run_profile(model: str, depth: int, seed: int, moves: int) -> dict:
     for _ in range(moves):
         if not can_move(game.board):
             break
-        action = agent.choose_action(game.board.copy())
+        profiler.enable()
+        try:
+            action = agent.choose_action(game.board.copy())
+        finally:
+            profiler.disable()
         total_nodes += agent.nodes
         total_hits += agent.cache_hits
         changed, _, _ = game.step(action)
@@ -44,20 +49,28 @@ def main() -> None:
     parser.add_argument("--depth", type=int, default=2)
     parser.add_argument("--seed", type=int, default=5200000)
     parser.add_argument("--moves", type=int, default=40)
+    parser.add_argument("--output", default=None, help="optional text file for the profile report")
     args = parser.parse_args()
+    if args.depth < 1:
+        parser.error("--depth must be >= 1")
+    if args.moves < 1:
+        parser.error("--moves must be >= 1")
 
     profiler = cProfile.Profile()
-    profiler.enable()
-    result = run_profile(args.model, args.depth, args.seed, args.moves)
-    profiler.disable()
-
-    for key, value in result.items():
-        print(f"{key}: {value}")
+    result = run_profile(args.model, args.depth, args.seed, args.moves, profiler)
 
     output = io.StringIO()
     pstats.Stats(profiler, stream=output).strip_dirs().sort_stats("cumtime").print_stats(30)
-    print("=== PROFILE BY CUMULATIVE TIME ===")
-    print(output.getvalue())
+    report = "\n".join(
+        [*(f"{key}: {value}" for key, value in result.items()),
+         "=== PROFILE BY CUMULATIVE TIME ===", output.getvalue()]
+    )
+    print(report)
+    if args.output:
+        profile_path = Path(args.output)
+        profile_path.parent.mkdir(parents=True, exist_ok=True)
+        profile_path.write_text(report, encoding="utf-8")
+        print(f"Profile written to {profile_path}")
 
 
 if __name__ == "__main__":

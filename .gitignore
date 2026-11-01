@@ -9,6 +9,7 @@ __pycache__/
 # Test cache
 .pytest_cache/
 
-
+# Local benchmark and profiling reports
+artifacts/
 
 player_stats.json

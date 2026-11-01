@@ -220,6 +220,70 @@ def test_multi_depth_evaluation_reports_separate_timings_and_progress(monkeypatc
     assert "EVAL DEPTH COMPLETE depth=3 games=2" in output
 
 
+def test_benchmark_uses_identical_game_seeds_and_reports_performance_metrics(monkeypatch):
+    import selfplay_ai
+
+    played = []
+
+    def fake_play_game(agent, seed, train=False):
+        depth, agent_seed = agent
+        played.append((depth, agent_seed, seed))
+        return {
+            "score": seed,
+            "max_tile": 2048,
+            "moves": 10,
+            "search_nodes": depth * 20,
+        }
+
+    monkeypatch.setattr(
+        selfplay_ai, "ExpectimaxAgent",
+        lambda evaluator, depth, seed: (depth, seed),
+    )
+    monkeypatch.setattr(selfplay_ai, "play_game", fake_play_game)
+
+    reports = selfplay_ai.benchmark(NTupleValue(), games=2, depths=[1, 2, 3], seed_start=500)
+
+    expected_seeds = [500, 501]
+    assert [[seed for depth, agent_seed, seed in played if depth == value]
+            for value in (1, 2, 3)] == [expected_seeds] * 3
+    assert all(agent_seed == seed for _, agent_seed, seed in played)
+    assert all(report["best_max_tile"] == 2048 for report in reports)
+    assert all(report["rate_2048"] == 1.0 and report["rate_4096"] == 0.0 for report in reports)
+    assert all(report["games_per_second"] > 0 for report in reports)
+
+
+def test_benchmark_cli_writes_metrics_csv(monkeypatch, tmp_path):
+    import csv
+    import selfplay_ai
+
+    report = {
+        "depth": 1,
+        "games": 1,
+        "avg_score": 100.0,
+        "median_score": 100.0,
+        "best_max_tile": 2048,
+        "rate_2048": 1.0,
+        "rate_4096": 0.0,
+        "avg_max_tile": 2048.0,
+        "seconds": 1.0,
+        "games_per_second": 1.0,
+        "avg_search_nodes_per_move": 2.0,
+    }
+    monkeypatch.setattr(selfplay_ai.NTupleValue, "load", lambda self, model: None)
+    monkeypatch.setattr(selfplay_ai, "benchmark", lambda *args, **kwargs: [report])
+    output = tmp_path / "nested" / "benchmark.csv"
+    args = selfplay_ai.build_parser().parse_args([
+        "benchmark", "--model", "unused.npz", "--output", str(output),
+    ])
+
+    selfplay_ai.benchmark_cli(args)
+
+    with output.open(newline="", encoding="utf-8") as file:
+        rows = list(csv.DictReader(file))
+    assert rows[0]["best_max_tile"] == "2048"
+    assert rows[0]["games_per_second"] == "1.0"
+
+
 
 def test_expectimax_cache_keeps_transposed_states_separate():
     evaluator = NTupleValue(seed=29)
