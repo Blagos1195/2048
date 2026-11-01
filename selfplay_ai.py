@@ -533,8 +533,12 @@ def _apply_collected_episode(evaluator: NTupleValue, transitions: list) -> float
         count += 1
     return td_abs / max(count, 1)
 
+class SafeTrainingStop(Exception):
+    pass
+
+
 def _handle_training_interrupt(signum, frame):
-    raise KeyboardInterrupt
+    raise SafeTrainingStop
 
 
 def train(args: argparse.Namespace) -> None:
@@ -687,6 +691,8 @@ def train(args: argparse.Namespace) -> None:
             print(f"Training finished. Latest model: {out / 'latest.npz'}")
             print(f"Best evaluated model: {out / 'best.npz'}")
         except KeyboardInterrupt:
+            print("\nTraining interrupted with Ctrl+C. No checkpoint was saved.", flush=True)
+        except SafeTrainingStop:
             f.flush()
             metadata = {
                 "episodes": episode_base + episode,
