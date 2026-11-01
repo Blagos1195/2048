@@ -110,19 +110,25 @@ class Game2048:
         self.board = np.zeros((4, 4), dtype=np.uint32)
         self.score = 0
         self.moves = 0
+        self.last_spawn = None
         self._spawn()
         self._spawn()
 
-    def _spawn(self) -> None:
+    def _spawn(self) -> tuple[int, int, int] | None:
         empty = np.flatnonzero(self.board.reshape(-1) == 0)
         if len(empty) == 0:
-            return
+            self.last_spawn = None
+            return None
         cell = int(empty[self.rng.randrange(len(empty))])
-        self.board.reshape(-1)[cell] = 4 if self.rng.random() < 0.1 else 2
+        value = 4 if self.rng.random() < 0.1 else 2
+        self.board.reshape(-1)[cell] = value
+        self.last_spawn = (cell // 4, cell % 4, value)
+        return self.last_spawn
 
     def step(self, action: int) -> tuple[bool, int, bool]:
         new_board, reward = apply_action(self.board, action)
         if np.array_equal(new_board, self.board):
+            self.last_spawn = None
             return False, 0, not can_move(self.board)
         self.board = new_board
         self.score += reward
