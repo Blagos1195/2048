@@ -90,15 +90,20 @@ def slide_left(board: np.ndarray) -> tuple[np.ndarray, int]:
     return out, gained
 
 
+_ACTION_LINES = tuple(
+    tuple(
+        tuple((line, i) for i in range(4)) if action == 0 else
+        tuple((3 - i, line) for i in range(4)) if action == 1 else
+        tuple((line, 3 - i) for i in range(4)) if action == 2 else
+        tuple((i, line) for i in range(4))
+        for line in range(4)
+    )
+    for action in ACTIONS
+)
+
+
 def _action_line(board: np.ndarray, action: int, line: int) -> tuple[tuple[tuple[int, int], ...], tuple[int, int, int, int]]:
-    if action == 0:
-        cells = tuple((line, i) for i in range(4))
-    elif action == 1:
-        cells = tuple((3 - i, line) for i in range(4))
-    elif action == 2:
-        cells = tuple((line, 3 - i) for i in range(4))
-    else:
-        cells = tuple((i, line) for i in range(4))
+    cells = _ACTION_LINES[action][line]
     return cells, tuple(int(board[r, c]) for r, c in cells)
 
 
