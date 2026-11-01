@@ -89,7 +89,7 @@ jobs:
           await page.waitForFunction(() => {
             const result = document.querySelector("#result");
             return result?.dataset.complete === "true" || result?.dataset.complete === "error";
-          }, { timeout: 180000 });
+          }, null, { timeout: 180000 });
           const result = await page.locator("#result").textContent();
           console.log("=== BROWSER PYODIDE BENCHMARK ===");
           console.log(result);
