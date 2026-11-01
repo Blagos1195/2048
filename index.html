@@ -76,15 +76,15 @@ async function performMove(action){
    next.over=!board.some((row,r)=>row.some((v,c)=>!v||(r<3&&v===board[r+1][c])||(c<3&&v===board[r][c+1])));
   }
  }catch(e){busy=false;ready=true;updateTells();console.error("Game move failed:",e);say("Something went wrong. Please reload the page.");return false;}
- const cells=boardCells,rects=cells.map(el=>el.getBoundingClientRect()),boardRect=boardEl.getBoundingClientRect();
+ const cells=boardCells,rects=cells.map(el=>el.getBoundingClientRect()),values=cells.map(el=>el.textContent),boardRect=boardEl.getBoundingClientRect();
  cells.forEach(cell=>{cell.className="tile";cell.textContent="";});
  const animations=[];
  for(const move of visual.records){
   const [fr,fc]=move.from,[tr,tc]=move.to,index=fr*4+fc,el=document.createElement("div");
-  const source=cells[index];if(!source)continue;
+  const source=cells[index],value=Number(values[index])||0;if(!source||!value)continue;
   const sourceRect=rects[index],targetRect=rects[tr*4+tc];
-  el.className="tile t"+(Number(source.textContent)||0)+" moving-tile";
-  el.textContent=source.textContent;
+  el.className="tile t"+value+" moving-tile";
+  el.textContent=value;
   el.style.position="absolute";el.style.left=(sourceRect.left-boardRect.left)+"px";el.style.top=(sourceRect.top-boardRect.top)+"px";
   el.style.width=sourceRect.width+"px";el.style.height=sourceRect.height+"px";el.style.zIndex="2";el.style.pointerEvents="none";
   boardEl.appendChild(el);
