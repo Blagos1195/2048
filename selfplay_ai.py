@@ -79,6 +79,7 @@ def _slide_row(values: tuple[int, int, int, int]) -> tuple[tuple[int, int, int, 
 
 def slide_left(board: np.ndarray) -> tuple[np.ndarray, int]:
     """Pure 2048 left slide using a bounded cache of four-cell row transitions."""
+    board = np.asarray(board)
     out = np.zeros((4, 4), dtype=np.uint32)
     gained = 0
     for r in range(4):
@@ -87,21 +88,45 @@ def slide_left(board: np.ndarray) -> tuple[np.ndarray, int]:
         gained += row_score
     return out, gained
 
+
+def _action_line(board: np.ndarray, action: int, line: int) -> tuple[tuple[tuple[int, int], ...], tuple[int, int, int, int]]:
+    if action == 0:
+        cells = tuple((line, i) for i in range(4))
+    elif action == 1:
+        cells = tuple((3 - i, line) for i in range(4))
+    elif action == 2:
+        cells = tuple((line, 3 - i) for i in range(4))
+    else:
+        cells = tuple((i, line) for i in range(4))
+    return cells, tuple(int(board[r, c]) for r, c in cells)
+
+
 def apply_action(board: np.ndarray, action: int) -> tuple[np.ndarray, int]:
     """Return the resulting board and merge score for 0=left, 1=down, 2=right, 3=up."""
     if action not in ACTIONS:
         raise ValueError("action must be 0=left, 1=down, 2=right, or 3=up")
-    rotated = np.rot90(np.asarray(board), -action)
-    moved, score = slide_left(rotated)
-    return np.rot90(moved, action).copy(), score
+    board = np.asarray(board)
+    out = np.empty((4, 4), dtype=np.uint32)
+    gained = 0
+    for line in range(4):
+        cells, values = _action_line(board, action, line)
+        moved, score = _slide_row(values)
+        gained += score
+        for (r, c), value in zip(cells, moved):
+            out[r, c] = value
+    return out, gained
+
 
 def legal_actions(board: np.ndarray) -> list[int]:
-    return [a for a in ACTIONS if not np.array_equal(apply_action(board, a)[0], board)]
-
-def can_move(board: np.ndarray) -> bool:
-    if np.any(board == 0):
-        return True
-    return bool(np.any(board[:, :-1] == board[:, 1:]) or np.any(board[:-1, :] == board[1:, :]))
+    board = np.asarray(board)
+    legal = []
+    for action in ACTIONS:
+        for line in range(4):
+            _, values = _action_line(board, action, line)
+            if _slide_row(values)[0] != values:
+                legal.append(action)
+                break
+    return legal
 
 class Game2048:
     """Fast headless simulator with reproducible per-game randomness."""
@@ -142,6 +167,14 @@ class Game2048:
 
 _PATTERN_CELLS = np.asarray(PATTERNS, dtype=np.intp)
 _PATTERN_PLACE_VALUES = np.asarray((BASE ** 3, BASE ** 2, BASE, 1), dtype=np.int32)
+_PATTERN_INDEX_INCREMENTS = np.asarray((BASE ** 3, BASE ** 2, BASE, 1), dtype=np.int32)
+_PATTERN_MEMBERSHIP_ARRAYS = tuple(
+    (
+        np.asarray([pattern for pattern, _ in PATTERN_MEMBERSHIP[cell]], dtype=np.intp),
+        np.asarray([position for _, position in PATTERN_MEMBERSHIP[cell]], dtype=np.intp),
+    )
+    for cell in range(16)
+)
 
 def pattern_indices(board: np.ndarray) -> np.ndarray:
     exponents = exponent_board(board).reshape(-1)
@@ -171,13 +204,13 @@ class NTupleValue:
         base_value = float(self.weights[np.arange(PATTERN_COUNT), indices].sum(dtype=np.float64))
         total = 0.0
         for cell_value in empty:
-            cell = int(cell_value)
-            for exponent, probability in ((1, 0.9), (2, 0.1)):
-                value = base_value
-                for pattern, position in PATTERN_MEMBERSHIP[cell]:
-                    new_index = int(indices[pattern]) + exponent * (BASE ** (3 - position))
-                    value += float(self.weights[pattern, new_index] - self.weights[pattern, indices[pattern]])
-                total += probability * value
+            patterns, positions = _PATTERN_MEMBERSHIP_ARRAYS[int(cell_value)]
+            base_indices = indices[patterns]
+            increments = _PATTERN_INDEX_INCREMENTS[positions]
+            value_two = self.weights[patterns, base_indices + increments] - self.weights[patterns, base_indices]
+            value_four = self.weights[patterns, base_indices + 2 * increments] - self.weights[patterns, base_indices]
+            total += 0.9 * (base_value + float(value_two.sum(dtype=np.float64)))
+            total += 0.1 * (base_value + float(value_four.sum(dtype=np.float64)))
         return total / len(empty)
 
     def update(self, state: np.ndarray, reward: float, next_state: np.ndarray, terminal: bool) -> float:
