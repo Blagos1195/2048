@@ -424,16 +424,17 @@ def test_optimised_spawn_value_matches_explicit_enumeration_on_full_range():
     evaluator = NTupleValue(seed=157)
     rng = np.random.default_rng(158)
     evaluator.weights[:] = rng.normal(0.0, 0.02, evaluator.weights.shape).astype(np.float32)
-    board = rng.choice(
-        [0, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096],
-        size=(4, 4),
-    ).astype(np.uint32)
-    board.flat[0] = 0
-    expected = 0.0
-    empty = np.flatnonzero(board.reshape(-1) == 0)
-    for cell in empty:
-        for tile, probability in ((2, 0.9), (4, 0.1)):
-            child = board.copy()
-            child.flat[cell] = tile
-            expected += probability * evaluator.value(child) / len(empty)
-    assert evaluator.expected_spawn_value(board) == pytest.approx(expected, abs=1e-6)
+    for _ in range(12):
+        board = rng.choice(
+            [0, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384],
+            size=(4, 4),
+        ).astype(np.uint32)
+        board.flat[rng.integers(16)] = 0
+        expected = 0.0
+        empty = np.flatnonzero(board.reshape(-1) == 0)
+        for cell in empty:
+            for tile, probability in ((2, 0.9), (4, 0.1)):
+                child = board.copy()
+                child.flat[cell] = tile
+                expected += probability * evaluator.value(child) / len(empty)
+        assert evaluator.expected_spawn_value(board) == pytest.approx(expected, abs=1e-6)
