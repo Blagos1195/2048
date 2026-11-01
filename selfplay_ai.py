@@ -147,6 +147,79 @@ _ACTION_LINE_INDICES = tuple(
 )
 
 
+_ACTION_INDEX_ARRAY = np.asarray(_ACTION_LINE_INDICES, dtype=np.intp)
+
+try:
+    from numba import njit
+except ImportError:
+    njit = None
+
+
+if njit is not None:
+    @njit(cache=True)
+    def _slide_line_kernel(flat, indices):
+        values = np.empty(4, dtype=np.int64)
+        count = 0
+        for position in range(4):
+            value = int(flat[indices[position]])
+            if value:
+                values[count] = value
+                count += 1
+        moved = np.zeros(4, dtype=np.uint32)
+        score = 0
+        output = 0
+        position = 0
+        while position < count:
+            value = values[position]
+            if position + 1 < count and value == values[position + 1]:
+                value *= 2
+                score += value
+                position += 2
+            else:
+                position += 1
+            moved[output] = value
+            output += 1
+        return moved, score
+
+    @njit(cache=True)
+    def _apply_action_kernel(board, action, line_indices):
+        flat = board.reshape(16)
+        out = np.empty((4, 4), dtype=np.uint32)
+        out_flat = out.reshape(16)
+        gained = 0
+        changed = False
+        for line in range(4):
+            indices = line_indices[action, line]
+            moved, score = _slide_line_kernel(flat, indices)
+            gained += score
+            for position in range(4):
+                index = indices[position]
+                out_flat[index] = moved[position]
+                if int(moved[position]) != int(flat[index]):
+                    changed = True
+        return out, gained, changed
+
+    @njit(cache=True)
+    def _legal_actions_kernel(board, line_indices):
+        flat = board.reshape(16)
+        legal = np.empty(4, dtype=np.int64)
+        count = 0
+        for action in range(4):
+            for line in range(4):
+                indices = line_indices[action, line]
+                moved, _ = _slide_line_kernel(flat, indices)
+                changed = False
+                for position in range(4):
+                    if int(moved[position]) != int(flat[indices[position]]):
+                        changed = True
+                        break
+                if changed:
+                    legal[count] = action
+                    count += 1
+                    break
+        return legal[:count]
+
+
 def _action_line(board: np.ndarray, action: int, line: int) -> tuple[tuple[tuple[int, int], ...], tuple[int, int, int, int]]:
     cells = _ACTION_LINES[action][line]
     i0, i1, i2, i3 = _ACTION_LINE_INDICES[action][line]
@@ -158,6 +231,8 @@ def _apply_action(board: np.ndarray, action: int) -> tuple[np.ndarray, int, bool
     if action not in ACTIONS:
         raise ValueError("action must be 0=left, 1=down, 2=right, or 3=up")
     board = np.asarray(board)
+    if njit is not None:
+        return _apply_action_kernel(board, action, _ACTION_INDEX_ARRAY)
     flat = board.reshape(-1)
     out = np.empty((4, 4), dtype=np.uint32)
     out_flat = out.reshape(-1)
@@ -180,7 +255,10 @@ def apply_action(board: np.ndarray, action: int) -> tuple[np.ndarray, int]:
 
 
 def legal_actions(board: np.ndarray) -> list[int]:
-    flat = np.asarray(board).reshape(-1)
+    board = np.asarray(board)
+    if njit is not None:
+        return _legal_actions_kernel(board, _ACTION_INDEX_ARRAY).tolist()
+    flat = board.reshape(-1)
     legal = []
     for action in ACTIONS:
         for line in range(4):
