@@ -88,21 +88,21 @@ def _build_row_transitions() -> tuple[tuple[tuple[int, int, int, int], int], ...
 _ROW_TRANSITIONS = _build_row_transitions()
 
 
+@lru_cache(maxsize=65536)
 def _slide_row(values: tuple[int, int, int, int]) -> tuple[tuple[int, int, int, int], int]:
     """Use precomputed transitions for standard 2048 tiles and a general fallback otherwise."""
-    v0, v1, v2, v3 = values
-    e0 = 0 if v0 == 0 else v0.bit_length() - 1
-    e1 = 0 if v1 == 0 else v1.bit_length() - 1
-    e2 = 0 if v2 == 0 else v2.bit_length() - 1
-    e3 = 0 if v3 == 0 else v3.bit_length() - 1
-    if (
-        e0 <= 15 and e1 <= 15 and e2 <= 15 and e3 <= 15
-        and (v0 == 0 or v0 == 1 << e0)
-        and (v1 == 0 or v1 == 1 << e1)
-        and (v2 == 0 or v2 == 1 << e2)
-        and (v3 == 0 or v3 == 1 << e3)
-    ):
-        return _ROW_TRANSITIONS[((e0 * 16 + e1) * 16 + e2) * 16 + e3]
+    exponents = []
+    for value in values:
+        if value == 0:
+            exponents.append(0)
+            continue
+        exponent = value.bit_length() - 1
+        if exponent > 15 or value != 1 << exponent:
+            break
+        exponents.append(exponent)
+    else:
+        key = ((exponents[0] * 16 + exponents[1]) * 16 + exponents[2]) * 16 + exponents[3]
+        return _ROW_TRANSITIONS[key]
     compact = [value for value in values if value]
     merged = []
     gained = 0
@@ -357,8 +357,8 @@ class ExpectimaxAgent:
         self.nodes = 0
         self.cache_size = int(cache_size)
 
-        self._chance_cache: dict[tuple[bytes, int], float] = {}
-        self._player_cache: dict[tuple[bytes, int], float] = {}
+        self._chance_cache: OrderedDict[tuple[bytes, int], float] = OrderedDict()
+        self._player_cache: OrderedDict[tuple[bytes, int], float] = OrderedDict()
         self.cache_hits = 0
         self._cache_updates = evaluator.updates
 
@@ -371,16 +371,18 @@ class ExpectimaxAgent:
 
         return (board.tobytes(), depth)
 
-    def _cache_get(self, cache: dict, key):
+    def _cache_get(self, cache: OrderedDict, key):
         value = cache.get(key)
         if value is not None:
+            cache.move_to_end(key)
             self.cache_hits += 1
         return value
 
-    def _cache_set(self, cache: dict, key, value: float) -> None:
+    def _cache_set(self, cache: OrderedDict, key, value: float) -> None:
         cache[key] = value
-        if len(cache) > self.cache_size:
-            cache.pop(next(iter(cache)))
+        cache.move_to_end(key)
+        while len(cache) > self.cache_size:
+            cache.popitem(last=False)
 
     def choose_action(self, board: np.ndarray) -> int:
         actions = legal_actions(board)
