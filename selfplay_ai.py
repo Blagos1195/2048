@@ -236,6 +236,7 @@ class Game2048:
 _PATTERN_CELLS = np.asarray(PATTERNS, dtype=np.intp)
 _PATTERN_PLACE_VALUES = np.asarray((BASE ** 3, BASE ** 2, BASE, 1), dtype=np.int32)
 _PATTERN_INDEX_INCREMENTS = np.asarray((BASE ** 3, BASE ** 2, BASE, 1), dtype=np.int32)
+_PATTERN_WEIGHT_OFFSETS = np.arange(PATTERN_COUNT, dtype=np.intp) * PATTERN_TABLE_SIZE
 _PATTERN_MEMBERSHIP_ARRAYS = tuple(
     (
         np.asarray([pattern for pattern, _ in PATTERN_MEMBERSHIP[cell]], dtype=np.intp),
@@ -288,14 +289,16 @@ class NTupleValue:
         if empty_mask == 0:
             return self.value(board)
         indices = pattern_indices(board)
-        base_weights = self.weights[np.arange(PATTERN_COUNT), indices]
+        weights = self.weights.reshape(-1)
+        base_weight_indices = _PATTERN_WEIGHT_OFFSETS + indices
+        base_weights = weights[base_weight_indices]
         base_value = float(base_weights.sum(dtype=np.float64))
         patterns, positions = _empty_pattern_memberships(empty_mask)
-        base_indices = indices[patterns]
+        membership_weight_indices = _PATTERN_WEIGHT_OFFSETS[patterns] + indices[patterns]
         increments = _PATTERN_INDEX_INCREMENTS[positions]
-        base = self.weights[patterns, base_indices]
-        value_two = self.weights[patterns, base_indices + increments] - base
-        value_four = self.weights[patterns, base_indices + 2 * increments] - base
+        base = weights[membership_weight_indices]
+        value_two = weights[membership_weight_indices + increments] - base
+        value_four = weights[membership_weight_indices + 2 * increments] - base
         count = empty_mask.bit_count()
         total = count * base_value
         total += 0.9 * float(value_two.sum(dtype=np.float64))

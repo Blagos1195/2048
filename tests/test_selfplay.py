@@ -92,6 +92,29 @@ def test_expected_spawn_value_matches_explicit_enumeration():
     assert evaluator.expected_spawn_value(board) == pytest.approx(expected, abs=1e-6)
 
 
+def test_expected_spawn_value_matches_reference_on_random_boards():
+    evaluator = NTupleValue(seed=7)
+    weights_rng = np.random.default_rng(8)
+    evaluator.weights[:] = weights_rng.normal(0.0, 0.01, evaluator.weights.shape).astype(np.float32)
+    board_rng = np.random.default_rng(9)
+
+    for _ in range(40):
+        exponents = board_rng.integers(0, 19, size=(4, 4))
+        occupied = board_rng.random((4, 4)) < board_rng.uniform(0.1, 0.95)
+        board = np.where(occupied, np.left_shift(1, exponents), 0).astype(np.uint64)
+        empty = np.argwhere(board == 0)
+        if not len(empty):
+            expected = evaluator.value(board)
+        else:
+            expected = 0.0
+            for row, column in empty:
+                for tile, probability in ((2, 0.9), (4, 0.1)):
+                    child = board.copy()
+                    child[row, column] = tile
+                    expected += probability * evaluator.value(child) / len(empty)
+        assert evaluator.expected_spawn_value(board) == pytest.approx(expected, abs=1e-6)
+
+
 
 def test_expectimax_cache_reuses_identical_chance_states():
     evaluator = NTupleValue(seed=11)
