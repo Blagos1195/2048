@@ -113,8 +113,7 @@ def _action_line(board: np.ndarray, action: int, line: int) -> tuple[tuple[tuple
     return cells, (int(flat[i0]), int(flat[i1]), int(flat[i2]), int(flat[i3]))
 
 
-def apply_action(board: np.ndarray, action: int) -> tuple[np.ndarray, int]:
-    """Return the resulting board and merge score for 0=left, 1=down, 2=right, 3=up."""
+def _apply_action(board: np.ndarray, action: int) -> tuple[np.ndarray, int, bool]:
     if action not in ACTIONS:
         raise ValueError("action must be 0=left, 1=down, 2=right, or 3=up")
     board = np.asarray(board)
@@ -122,13 +121,21 @@ def apply_action(board: np.ndarray, action: int) -> tuple[np.ndarray, int]:
     out = np.empty((4, 4), dtype=np.uint32)
     out_flat = out.reshape(-1)
     gained = 0
+    changed = False
     for line in range(4):
         i0, i1, i2, i3 = _ACTION_LINE_INDICES[action][line]
         values = (int(flat[i0]), int(flat[i1]), int(flat[i2]), int(flat[i3]))
         moved, score = _slide_row(values)
         gained += score
+        changed |= moved != values
         out_flat[i0], out_flat[i1], out_flat[i2], out_flat[i3] = moved
-    return out, gained
+    return out, gained, changed
+
+
+def apply_action(board: np.ndarray, action: int) -> tuple[np.ndarray, int]:
+    """Return the resulting board and merge score for 0=left, 1=down, 2=right, 3=up."""
+    result, gained, _ = _apply_action(board, action)
+    return result, gained
 
 
 def legal_actions(board: np.ndarray) -> list[int]:
@@ -171,8 +178,8 @@ class Game2048:
         return self.last_spawn
 
     def step(self, action: int) -> tuple[bool, int, bool]:
-        new_board, reward = apply_action(self.board, action)
-        if np.array_equal(new_board, self.board):
+        new_board, reward, changed = _apply_action(self.board, action)
+        if not changed:
             self.last_spawn = None
             return False, 0, not can_move(self.board)
         self.board = new_board
@@ -347,8 +354,8 @@ class ExpectimaxAgent:
         return self.rng.choice([a for v, a in scored if abs(v - best) < 1e-9])
 
     def _player(self, board: np.ndarray, depth: int, action: int) -> float:
-        moved, merge_score = apply_action(board, action)
-        if np.array_equal(moved, board):
+        moved, merge_score, changed = _apply_action(board, action)
+        if not changed:
             return -1e30
         return merge_score / 128.0 + self._chance(moved, depth - 1)
 
