@@ -350,3 +350,32 @@ def test_local_square_patterns_are_included():
         [8192, 16384, 32768, 65536],
     ], dtype=np.uint32)
     assert pattern_indices(board).shape == (26,)
+
+
+def test_game_step_reports_spawn_without_changing_randomness_or_state():
+    game = Game2048(101)
+    before = game.board.copy()
+    action = next(a for a in range(4) if not np.array_equal(apply_action(before, a)[0], before))
+    moved, reward, terminal = game.step(action)
+    assert moved
+    assert game.last_spawn is not None
+    r, c, value = game.last_spawn
+    assert game.board[r, c] == value
+    assert value in (2, 4)
+    assert game.board.sum() == apply_action(before, action)[0].sum() + value
+    assert game.moves == 1
+    assert game.score == reward
+
+
+def test_game_step_clears_spawn_metadata_for_illegal_move():
+    game = Game2048(103)
+    game.board = np.array([
+        [2, 4, 8, 16],
+        [4, 8, 16, 2],
+        [8, 16, 2, 4],
+        [16, 2, 4, 8],
+    ], dtype=np.uint32)
+    game.last_spawn = (0, 0, 2)
+    moved, reward, terminal = game.step(0)
+    assert not moved
+    assert game.last_spawn is None
