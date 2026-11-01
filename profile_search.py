@@ -4,10 +4,6 @@ import argparse
 import cProfile
 import pstats
 import io
-import random
-
-import numpy as np
-
 from selfplay_ai import ExpectimaxAgent, Game2048, NTupleValue, can_move
 
 
