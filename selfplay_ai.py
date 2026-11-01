@@ -206,17 +206,21 @@ class NTupleValue:
         if len(empty) == 0:
             return self.value(board)
         indices = pattern_indices(board)
-        base_value = float(self.weights[np.arange(PATTERN_COUNT), indices].sum(dtype=np.float64))
-        total = 0.0
-        for cell_value in empty:
-            patterns, positions = _PATTERN_MEMBERSHIP_ARRAYS[int(cell_value)]
-            base_indices = indices[patterns]
-            increments = _PATTERN_INDEX_INCREMENTS[positions]
-            value_two = self.weights[patterns, base_indices + increments] - self.weights[patterns, base_indices]
-            value_four = self.weights[patterns, base_indices + 2 * increments] - self.weights[patterns, base_indices]
-            total += 0.9 * (base_value + float(value_two.sum(dtype=np.float64)))
-            total += 0.1 * (base_value + float(value_four.sum(dtype=np.float64)))
-        return total / len(empty)
+        base_weights = self.weights[np.arange(PATTERN_COUNT), indices]
+        base_value = float(base_weights.sum(dtype=np.float64))
+        memberships = [_PATTERN_MEMBERSHIP_ARRAYS[int(cell)] for cell in empty]
+        patterns = np.concatenate([item[0] for item in memberships])
+        positions = np.concatenate([item[1] for item in memberships])
+        base_indices = indices[patterns]
+        increments = _PATTERN_INDEX_INCREMENTS[positions]
+        base = self.weights[patterns, base_indices]
+        value_two = self.weights[patterns, base_indices + increments] - base
+        value_four = self.weights[patterns, base_indices + 2 * increments] - base
+        count = len(empty)
+        total = count * base_value
+        total += 0.9 * float(value_two.sum(dtype=np.float64))
+        total += 0.1 * float(value_four.sum(dtype=np.float64))
+        return total / count
 
     def update(self, state: np.ndarray, reward: float, next_state: np.ndarray, terminal: bool) -> float:
         """Semi-gradient TD(0): fit value to reward plus discounted next-state value."""
