@@ -1,0 +1,41 @@
+name: Restore recovered training artifact
+
+on:
+  push:
+    paths:
+      - .github/workflows/restore-trained-artifact.yml
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Download the successful training artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: self-learning-2048-trained-model
+          path: models/selfplay
+          repository: Blagos1195/2048
+          run-id: 41332009289
+          github-token: ${{ github.token }}
+
+      - name: Commit recovered checkpoints and metrics
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s models/selfplay/best.npz
+          test -s models/selfplay/latest.npz
+          test -s models/selfplay/training.csv
+          test -s models/selfplay/evaluation.csv
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+users.noreply.github.com"
+          git add models/selfplay/best.npz models/selfplay/latest.npz models/selfplay/training.csv models/selfplay/evaluation.csv
+          git commit -m "Restore recovered self-play training checkpoints"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
