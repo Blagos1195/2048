@@ -18,6 +18,20 @@ Run the tests:
 python -m pytest -q
 ```
 
+## Easy launcher
+
+For the normal way to use the project, run:
+
+```bash
+python run.py
+```
+
+A menu lets you train a new AI, continue from the latest checkpoint, watch it play, use LARP mode, watch live training, evaluate a model, compare search depths, or run the tests. It automatically finds the saved model files, so you do not need to type their paths.
+
+Choose an option and answer the short prompts. Press Enter to accept the suggested defaults. Training can be stopped with Ctrl+C.
+
+The command-line options below are still available if you want more control.
+
 ## Train the AI
 
 Train from scratch using the defaults (100,000 games):
