@@ -433,7 +433,10 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                                         record_game()
                                     else:
                                         schedule_plan()
-                        elif event.key in (pygame.K_SPACE, pygame.K_RETURN, pygame.K_KP_ENTER) and not auto_move:
+                        elif event.key in (
+                            pygame.K_SPACE, pygame.K_RETURN, pygame.K_KP_ENTER,
+                            pygame.K_LEFT, pygame.K_DOWN, pygame.K_RIGHT, pygame.K_UP,
+                        ) and not auto_move:
 
                             with plan_lock:
                                 planned_board = move_plan["board"]
