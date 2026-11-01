@@ -379,3 +379,61 @@ def test_game_step_clears_spawn_metadata_for_illegal_move():
     moved, reward, terminal = game.step(0)
     assert not moved
     assert game.last_spawn is None
+
+
+def test_direct_actions_match_reference_for_random_boards():
+    rng = np.random.default_rng(151)
+
+    def reference_action(board, action):
+        rotated = np.rot90(board, -action)
+        out = np.zeros((4, 4), dtype=np.uint32)
+        score = 0
+        for r in range(4):
+            values = [int(value) for value in rotated[r] if value]
+            merged = []
+            i = 0
+            while i < len(values):
+                if i + 1 < len(values) and values[i] == values[i + 1]:
+                    value = values[i] * 2
+                    merged.append(value)
+                    score += value
+                    i += 2
+                else:
+                    merged.append(values[i])
+                    i += 1
+            out[r] = merged + [0] * (4 - len(merged))
+        return np.rot90(out, action).copy(), score
+
+    for _ in range(500):
+        board = rng.choice(
+            [0, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048],
+            size=(4, 4),
+        ).astype(np.uint32)
+        expected_legal = []
+        for action in range(4):
+            expected, expected_score = reference_action(board, action)
+            actual, actual_score = apply_action(board, action)
+            assert np.array_equal(actual, expected)
+            assert actual_score == expected_score
+            if not np.array_equal(expected, board):
+                expected_legal.append(action)
+        assert legal_actions(board) == expected_legal
+
+
+def test_optimised_spawn_value_matches_explicit_enumeration_on_full_range():
+    evaluator = NTupleValue(seed=157)
+    rng = np.random.default_rng(158)
+    evaluator.weights[:] = rng.normal(0.0, 0.02, evaluator.weights.shape).astype(np.float32)
+    board = rng.choice(
+        [0, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096],
+        size=(4, 4),
+    ).astype(np.uint32)
+    board.flat[0] = 0
+    expected = 0.0
+    empty = np.flatnonzero(board.reshape(-1) == 0)
+    for cell in empty:
+        for tile, probability in ((2, 0.9), (4, 0.1)):
+            child = board.copy()
+            child.flat[cell] = tile
+            expected += probability * evaluator.value(child) / len(empty)
+    assert evaluator.expected_spawn_value(board) == pytest.approx(expected, abs=1e-6)
