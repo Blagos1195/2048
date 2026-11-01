@@ -108,8 +108,9 @@ _ACTION_LINE_INDICES = tuple(
 
 def _action_line(board: np.ndarray, action: int, line: int) -> tuple[tuple[tuple[int, int], ...], tuple[int, int, int, int]]:
     cells = _ACTION_LINES[action][line]
-    indices = _ACTION_LINE_INDICES[action][line]
-    return cells, tuple(map(int, board.reshape(-1)[list(indices)]))
+    i0, i1, i2, i3 = _ACTION_LINE_INDICES[action][line]
+    flat = board.reshape(-1)
+    return cells, (int(flat[i0]), int(flat[i1]), int(flat[i2]), int(flat[i3]))
 
 
 def apply_action(board: np.ndarray, action: int) -> tuple[np.ndarray, int]:
@@ -122,21 +123,21 @@ def apply_action(board: np.ndarray, action: int) -> tuple[np.ndarray, int]:
     out_flat = out.reshape(-1)
     gained = 0
     for line in range(4):
-        indices = _ACTION_LINE_INDICES[action][line]
-        values = tuple(map(int, flat[list(indices)]))
+        i0, i1, i2, i3 = _ACTION_LINE_INDICES[action][line]
+        values = (int(flat[i0]), int(flat[i1]), int(flat[i2]), int(flat[i3]))
         moved, score = _slide_row(values)
         gained += score
-        for index, value in zip(indices, moved):
-            out_flat[index] = value
+        out_flat[i0], out_flat[i1], out_flat[i2], out_flat[i3] = moved
     return out, gained
 
 
 def legal_actions(board: np.ndarray) -> list[int]:
-    board = np.asarray(board)
+    flat = np.asarray(board).reshape(-1)
     legal = []
     for action in ACTIONS:
         for line in range(4):
-            _, values = _action_line(board, action, line)
+            i0, i1, i2, i3 = _ACTION_LINE_INDICES[action][line]
+            values = (int(flat[i0]), int(flat[i1]), int(flat[i2]), int(flat[i3]))
             if _slide_row(values)[0] != values:
                 legal.append(action)
                 break
