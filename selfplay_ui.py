@@ -537,16 +537,17 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                                 previous_board = game.board.copy()
                                 moved, _, terminal = game.step(action)
                                 if moved:
+                                    game_over = terminal or not can_move(game.board)
+                                    if game_over:
+                                        cancel_plan()
+                                    else:
+                                        schedule_plan()
                                     animate_move(previous_board, action)
                                     last_action = ACTION_NAMES[action]
                                     best_score = max(best_score, game.score)
                                     save_best_score()
-                                    game_over = terminal or not can_move(game.board)
                                     if game_over:
-                                        cancel_plan()
                                         record_game()
-                                    else:
-                                        schedule_plan()
                         elif event.key in (
                             pygame.K_SPACE, pygame.K_RETURN, pygame.K_KP_ENTER,
                             pygame.K_LEFT, pygame.K_DOWN, pygame.K_RIGHT, pygame.K_UP,
@@ -563,16 +564,17 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                                 previous_board = game.board.copy()
                                 moved, _, terminal = game.step(planned_action)
                                 if moved:
+                                    game_over = terminal or not can_move(game.board)
+                                    if game_over:
+                                        cancel_plan()
+                                    else:
+                                        schedule_plan()
                                     animate_move(previous_board, planned_action)
                                     last_action = ACTION_NAMES[planned_action]
                                     best_score = max(best_score, game.score)
                                     save_best_score()
-                                    game_over = terminal or not can_move(game.board)
                                     if game_over:
-                                        cancel_plan()
                                         record_game()
-                                    else:
-                                        schedule_plan()
 
         if ((auto and mode == 3) or (ai_control and auto_move and mode == 4)) and not game_over:
             with plan_lock:
@@ -582,16 +584,17 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                 previous_board = game.board.copy()
                 moved, _, terminal = game.step(planned_action)
                 if moved:
+                    game_over = terminal or not can_move(game.board)
+                    if game_over:
+                        cancel_plan()
+                    else:
+                        schedule_plan()
                     animate_move(previous_board, planned_action)
                     last_action = ACTION_NAMES[planned_action]
                     best_score = max(best_score, game.score)
                     save_best_score()
-                    game_over = terminal or not can_move(game.board)
                     if game_over:
-                        cancel_plan()
                         record_game()
-                    else:
-                        schedule_plan()
 
         screen.fill(BG)
 
