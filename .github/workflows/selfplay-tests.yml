@@ -31,7 +31,7 @@ jobs:
           python main.py train --games 4 --workers 2 --eval-every 0 --log-every 1 --out "$SMOKE_OUT"
           python main.py train --games 2 --workers 2 --eval-every 0 --log-every 1 \
             --resume "$SMOKE_OUT/latest.npz" --out "$SMOKE_OUT"
-      - name: Benchmark fixed seeds at depths 1, 2, and 3
+      - name: Benchmark fixed seeds at depths 1 and 2
         run: >-
           python scripts/benchmark_search.py
           --model models/selfplay/best.npz
@@ -43,7 +43,7 @@ jobs:
         run: >-
           python profile_search.py
           --model models/selfplay/best.npz
-          --depth 1
+          --depth 2
           --seed 5200000
           --moves 100
           --output artifacts/profile.txt
