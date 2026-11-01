@@ -359,12 +359,12 @@ class ExpectimaxAgent:
         cached = self._cache_get(self._player_cache, key)
         if cached is not None:
             return cached
-        actions = legal_actions(board)
-        if not actions:
-            return -2.0
         if depth <= 0:
-            result = self.evaluator.value(board)
+            result = self.evaluator.value(board) if can_move(board) else -2.0
         else:
+            actions = legal_actions(board)
+            if not actions:
+                return -2.0
             result = max(self._player(board, depth, a) for a in actions)
         self._cache_set(self._player_cache, key, result)
         return result
