@@ -284,11 +284,12 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
     last_move_time = 0.0
     move_debounce_seconds = 0.08
 
-    title_font = pygame.font.SysFont("arial", 30, bold=True)
-    score_font = pygame.font.SysFont("arial", 17, bold=True)
+    title_font = pygame.font.SysFont("arial", 64, bold=True)
+    score_font = pygame.font.SysFont("arial", 19, bold=True)
+    score_label_font = pygame.font.SysFont("arial", 10, bold=True)
     small = pygame.font.SysFont("arial", 15)
     tiny = pygame.font.SysFont("arial", 13)
-    button_font = pygame.font.SysFont("arial", 16, bold=True)
+    button_font = pygame.font.SysFont("arial", 14, bold=True)
 
     def schedule_plan():
         """Request a move without starting duplicate search threads."""
@@ -407,8 +408,10 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
         pygame.display.flip()
 
     def draw_button(rect, label, enabled=True):
-        color = (119, 110, 101) if enabled else (180, 174, 166)
-        pygame.draw.rect(screen, color, rect, border_radius=5)
+        color = (143, 122, 102) if label == "New Game" else PANEL
+        if not enabled:
+            color = (180, 174, 166)
+        pygame.draw.rect(screen, color, rect, border_radius=6)
         text = button_font.render(label, True, (255, 255, 255))
         screen.blit(text, text.get_rect(center=rect.center))
 
@@ -581,15 +584,15 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
         screen.fill(BG)
 
         screen.blit(title_font.render("2048", True, TEXT), (margin, 14))
-        score_w = max(82, (width - margin * 2 - 8) // 2)
+        score_w = 92
         score_x = width - margin - score_w * 2 - 8
         for i, (label, value) in enumerate((("SCORE", game.score), ("BEST", max(int(player_stats["highest_score"]), best_score, game.score)))):
             rect = pygame.Rect(score_x + i * (score_w + 8), 12, score_w, 54)
             pygame.draw.rect(screen, PANEL, rect, border_radius=5)
-            screen.blit(tiny.render(label, True, (238, 228, 218)),
-                        tiny.render(label, True, (238, 228, 218)).get_rect(center=(rect.centerx, rect.y + 13)))
+            label_surface = score_label_font.render(label, True, (238, 228, 218))
+            screen.blit(label_surface, label_surface.get_rect(center=(rect.centerx, rect.y + 12)))
             value_text = score_font.render(f"{value:,}", True, (255, 255, 255))
-            screen.blit(value_text, value_text.get_rect(center=(rect.centerx, rect.y + 36)))
+            screen.blit(value_text, value_text.get_rect(center=(rect.centerx, rect.y + 34)))
 
         width, height = screen.get_size()
         board_size = max(180, min(width - margin * 2, height - header_h - footer_h - button_h - gap * 3))
