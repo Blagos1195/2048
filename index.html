@@ -6,25 +6,24 @@
 <style>
 :root{font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:#514b45;background:#faf8ef}
 *{box-sizing:border-box}body{margin:0;min-height:100vh;display:flex;justify-content:center;padding:24px 14px}
-main{width:min(100%,480px)}header{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:12px}
-h1{font-size:clamp(48px,12vw,68px);line-height:.95;letter-spacing:-4px;margin:0;color:#776e65;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;cursor:default}.scores{display:flex;gap:8px;flex-shrink:0}
-.score{background:#bbada0;color:white;border-radius:8px;padding:8px 13px;text-align:center;min-width:88px;font-weight:700;box-shadow:0 2px 0 #a99b8e}
-.score small{display:block;font-size:10px;letter-spacing:1.2px;opacity:.9}.score span{font-size:20px;font-variant-numeric:tabular-nums}
-.intro{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 14px}.intro p{margin:0}.intro strong{color:#8f7a66;font-size:12px;letter-spacing:1px;text-transform:uppercase}
+main{width:min(100%,480px)}header{display:flex;align-items:end;justify-content:space-between;gap:12px;margin-bottom:16px}
+h1{font-size:clamp(42px,12vw,64px);line-height:1;margin:0;color:#776e65;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;cursor:default}.scores{display:flex;gap:8px}
+.score{background:#bbada0;color:white;border-radius:6px;padding:7px 12px;text-align:center;min-width:82px;font-weight:700}
+.score small{display:block;font-size:10px;letter-spacing:1px}.score span{font-size:19px}
 p{line-height:1.45;color:#776e65}.controls{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
 button{border:0;border-radius:6px;background:#8f7a66;color:white;padding:11px 14px;font-weight:700;font-size:14px;cursor:pointer}
 button.secondary{background:#bbada0}button:disabled{opacity:.5;cursor:wait}
-#board{position:relative;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:repeat(4,minmax(0,1fr));gap:9px;background:#bbada0;padding:9px;border-radius:10px;width:100%;aspect-ratio:1;overflow:hidden;overflow-anchor:none;contain:layout paint;touch-action:none;user-select:none;-webkit-user-select:none}
+#board{position:relative;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:repeat(4,minmax(0,1fr));gap:9px;background:#bbada0;padding:9px;border-radius:8px;width:100%;aspect-ratio:1;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
 .tile{display:flex;align-items:center;justify-content:center;border-radius:5px;background:#cdc1b4;color:#776e65;font-weight:800;font-size:clamp(22px,7vw,36px);min-width:0;min-height:0;overflow:hidden;white-space:nowrap}
 .t2{background:#eee4da}.t4{background:#ede0c8}.t8{background:#f2b179;color:white}.t16{background:#f59563;color:white}.t32{background:#f67c5f;color:white}.t64{background:#f65e3b;color:white}.t128,.t256,.t512{background:#edcf72;color:white;font-size:clamp(18px,5vw,29px)}.t1024,.t2048,.t4096{background:#edc53f;color:white;font-size:clamp(15px,4.5vw,25px)}
 #status{min-height:24px;font-size:13px;color:#776e65;margin-top:10px;text-align:center}.bottom{position:relative;min-height:34px;display:flex;align-items:center;justify-content:space-between}.tells{display:flex;align-items:center;gap:5px;position:absolute;right:0;bottom:2px}.tell{width:28px;height:30px;border:0;background:transparent;padding:0;display:grid;place-items:center;touch-action:manipulation}.tell i{display:block;width:4px;height:4px;border-radius:50%;background:#ddd5ca}.tell.active i{background:#82796f}.tell.ready i{background:#b4aa9b}.tell.ready.active i{background:#6e9b69}.overlay{display:none;position:fixed;inset:0;background:#0005;align-items:center;justify-content:center;padding:16px;z-index:5}.overlay.open{display:flex}.panel{width:min(100%,320px);background:#faf8ef;border:2px solid #bbada0;border-radius:10px;padding:18px;color:#776e65;box-shadow:0 8px 30px #0003}.panel-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}.panel h2{font-size:17px;margin:0}.panel button{padding:7px 11px}.panel p{margin:9px 0}.panel select{font:inherit;padding:8px;border:1px solid #bbada0;border-radius:5px;background:white;color:#514b45;width:100%}
-@media(max-width:380px){body{padding:16px 10px}header{gap:8px}h1{font-size:48px;letter-spacing:-3px}.scores{gap:5px}.score{min-width:72px;padding:7px 8px}.score span{font-size:18px}#board{gap:6px;padding:6px}.tile{font-size:22px}}
+@media(max-width:360px){#board{gap:6px;padding:6px}.tile{font-size:22px}}
 </style>
 <script src="./coi-serviceworker.js"></script>
 </head>
 <body><main>
 <header><h1>2048</h1><div class="scores"><div class="score"><small>SCORE</small><span id="score">0</span></div><div class="score"><small>BEST</small><span id="best">0</span></div></div></header>
-<div class="intro"><p>Join the numbers and reach 2048.</p><strong>Classic puzzle</strong></div>
+<p>Join the numbers and reach 2048.</p>
 <div id="board" aria-label="2048 game board"></div>
 <div class="controls"><button id="new">New Game</button><button id="stats" class="secondary">Your Stats</button></div>
 <div class="bottom"><div id="status">Loading game…</div><div class="tells" aria-label="Game status"><button class="tell" id="tell-ai" aria-label="Control mode"><i></i></button><button class="tell" id="tell-ready" aria-label="Make one automated move"><i></i></button><button class="tell" id="tell-auto" aria-label="Automatic play"><i></i></button></div></div>
@@ -33,14 +32,15 @@ button.secondary{background:#bbada0}button:disabled{opacity:.5;cursor:wait}
 </main>
 <script type="module">
 
-const $=id=>document.getElementById(id);const boardEl=document.getElementById("board"),scoreEl=document.getElementById("score"),bestEl=document.getElementById("best"),statusEl=document.getElementById("status");let boardCells=[];
+const $=id=>document.getElementById(id);const boardEl=document.getElementById("board"),scoreEl=document.getElementById("score"),bestEl=document.getElementById("best"),statusEl=document.getElementById("status");
 const buttons=[...document.querySelectorAll("button")];let pyodide=null,ready=true,engineReady=false,busy=false,best=0,touchStart=null,aiControl=false,autoMove=false,gameCount=0,totalScore=0,highestScore=0,highestTile=2,depth=1,titleTaps=0,titleTapTimer=null,lastMoveAction=null;
 const say=s=>statusEl.textContent=s;
 function saveGame(){if(!currentState)return;try{localStorage.setItem("2048-current-game",JSON.stringify({board:currentState.board,score:currentState.score,moves:currentState.moves,maxTile:currentState.maxTile,over:currentState.over,wonShown,keepPlaying}));}catch(e){}}
 function draw(state){
  currentState=state;
- if(boardCells.length!==16){const fragment=document.createDocumentFragment();for(let i=0;i<16;i++){const cell=document.createElement("div");cell.className="tile";boardCells.push(cell);fragment.appendChild(cell);}boardEl.replaceChildren(fragment);}
- state.board.flat().forEach((value,i)=>{const cell=boardCells[i];cell.className="tile "+(value?"t"+value:"");cell.textContent=value||"";});
+ const fragment=document.createDocumentFragment();
+ state.board.flat().forEach(value=>{const cell=document.createElement("div");cell.className="tile "+(value?"t"+value:"");cell.textContent=value||"";fragment.appendChild(cell);});
+ boardEl.replaceChildren(fragment);
  scoreEl.textContent=state.score.toLocaleString();best=Math.max(best,state.score);highestScore=Math.max(highestScore,state.score);highestTile=Math.max(highestTile,state.maxTile||2);bestEl.textContent=Math.max(best,highestScore).toLocaleString();
  try{localStorage.setItem("2048-player-stats",JSON.stringify({gamesPlayed:gameCount,totalScore,highestScore,highestTile}));}catch(e){}
  saveGame();if(state.over){recordGame();stopAuto();say("Game over. Start a new game to play again.");}updateTells();
@@ -76,15 +76,17 @@ async function performMove(action){
    next.over=!board.some((row,r)=>row.some((v,c)=>!v||(r<3&&v===board[r+1][c])||(c<3&&v===board[r][c+1])));
   }
  }catch(e){busy=false;ready=true;updateTells();console.error("Game move failed:",e);say("Something went wrong. Please reload the page.");return false;}
- const cells=boardCells,rects=cells.map(el=>el.getBoundingClientRect()),values=cells.map(el=>el.textContent),boardRect=boardEl.getBoundingClientRect();
- cells.forEach(cell=>{cell.className="tile";cell.textContent="";});
+ const cells=[...boardEl.children],rects=cells.map(el=>el.getBoundingClientRect()),boardRect=boardEl.getBoundingClientRect();
+ const backgrounds=document.createDocumentFragment();
+ for(let i=0;i<16;i++){const cell=document.createElement("div");cell.className="tile";backgrounds.appendChild(cell);}
+ boardEl.replaceChildren(backgrounds);
  const animations=[];
  for(const move of visual.records){
   const [fr,fc]=move.from,[tr,tc]=move.to,index=fr*4+fc,el=document.createElement("div");
-  const source=cells[index],value=Number(values[index])||0;if(!source||!value)continue;
+  const source=cells[index];if(!source)continue;
   const sourceRect=rects[index],targetRect=rects[tr*4+tc];
-  el.className="tile t"+value+" moving-tile";
-  el.textContent=value;
+  el.className="tile t"+(Number(source.textContent)||0)+" moving-tile";
+  el.textContent=source.textContent;
   el.style.position="absolute";el.style.left=(sourceRect.left-boardRect.left)+"px";el.style.top=(sourceRect.top-boardRect.top)+"px";
   el.style.width=sourceRect.width+"px";el.style.height=sourceRect.height+"px";el.style.zIndex="2";el.style.pointerEvents="none";
   boardEl.appendChild(el);
@@ -95,7 +97,6 @@ async function performMove(action){
   ));
  }
  if(animations.length)await Promise.all(animations.map(a=>a.finished.catch(()=>{})));
- boardEl.querySelectorAll(".moving-tile").forEach(tile=>tile.remove());
  ready=true;busy=false;renderState(next);
  if(spawned){const tile=boardEl.children[spawned.r*4+spawned.c];if(tile)tile.animate([{transform:"scale(.75)",opacity:.55},{transform:"scale(1)",opacity:1}],{duration:65,easing:"ease-out"});}
  if(pendingMoves.length&&!next.over&&!aiControl){const queued=pendingMoves.shift();queueMicrotask(()=>humanMove(queued));}
