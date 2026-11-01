@@ -100,11 +100,16 @@ _ACTION_LINES = tuple(
     )
     for action in ACTIONS
 )
+_ACTION_LINE_INDICES = tuple(
+    tuple(tuple(r * 4 + c for r, c in cells) for cells in action_lines)
+    for action_lines in _ACTION_LINES
+)
 
 
 def _action_line(board: np.ndarray, action: int, line: int) -> tuple[tuple[tuple[int, int], ...], tuple[int, int, int, int]]:
     cells = _ACTION_LINES[action][line]
-    return cells, tuple(int(board[r, c]) for r, c in cells)
+    indices = _ACTION_LINE_INDICES[action][line]
+    return cells, tuple(map(int, board.reshape(-1)[list(indices)]))
 
 
 def apply_action(board: np.ndarray, action: int) -> tuple[np.ndarray, int]:
@@ -112,14 +117,17 @@ def apply_action(board: np.ndarray, action: int) -> tuple[np.ndarray, int]:
     if action not in ACTIONS:
         raise ValueError("action must be 0=left, 1=down, 2=right, or 3=up")
     board = np.asarray(board)
+    flat = board.reshape(-1)
     out = np.empty((4, 4), dtype=np.uint32)
+    out_flat = out.reshape(-1)
     gained = 0
     for line in range(4):
-        cells, values = _action_line(board, action, line)
+        indices = _ACTION_LINE_INDICES[action][line]
+        values = tuple(map(int, flat[list(indices)]))
         moved, score = _slide_row(values)
         gained += score
-        for (r, c), value in zip(cells, moved):
-            out[r, c] = value
+        for index, value in zip(indices, moved):
+            out_flat[index] = value
     return out, gained
 
 
