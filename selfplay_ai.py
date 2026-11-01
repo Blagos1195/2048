@@ -219,6 +219,39 @@ if njit is not None:
                     break
         return legal[:count]
 
+    @njit(cache=True)
+    def _expected_spawn_value_kernel(board, weights, pattern_cells, place_values, weight_offsets, membership_patterns, membership_positions, increments, exponent_lookup):
+        flat = board.reshape(16)
+        indices = np.empty(pattern_cells.shape[0], dtype=np.int64)
+        base_value = 0.0
+        for pattern in range(pattern_cells.shape[0]):
+            index = 0
+            for position in range(4):
+                value = int(flat[pattern_cells[pattern, position]])
+                exponent = int(exponent_lookup[min(value, 1 << 15)])
+                index += exponent * int(place_values[position])
+            indices[pattern] = index
+            base_value += float(weights[weight_offsets[pattern] + index])
+        count = 0
+        for cell in range(16):
+            if flat[cell] == 0:
+                count += 1
+        if count == 0:
+            return base_value
+        total = count * base_value
+        value_two_sum = 0.0
+        value_four_sum = 0.0
+        for item in range(membership_patterns.shape[0]):
+            pattern = int(membership_patterns[item])
+            weight_index = int(weight_offsets[pattern] + indices[pattern])
+            increment = int(increments[membership_positions[item]])
+            base_weight = float(weights[weight_index])
+            value_two_sum += float(weights[weight_index + increment]) - base_weight
+            value_four_sum += float(weights[weight_index + 2 * increment]) - base_weight
+        total += 0.9 * value_two_sum
+        total += 0.1 * value_four_sum
+        return total / count
+
 
 def _action_line(board: np.ndarray, action: int, line: int) -> tuple[tuple[tuple[int, int], ...], tuple[int, int, int, int]]:
     cells = _ACTION_LINES[action][line]
@@ -366,12 +399,18 @@ class NTupleValue:
                 empty_mask |= 1 << cell
         if empty_mask == 0:
             return self.value(board)
+        patterns, positions = _empty_pattern_memberships(empty_mask)
+        if njit is not None:
+            return float(_expected_spawn_value_kernel(
+                board, self.weights.reshape(-1), _PATTERN_CELLS,
+                _PATTERN_PLACE_VALUES, _PATTERN_WEIGHT_OFFSETS,
+                patterns, positions, _PATTERN_INDEX_INCREMENTS,
+                _TILE_EXPONENT_LOOKUP,
+            ))
         indices = pattern_indices(board)
         weights = self.weights.reshape(-1)
         base_weight_indices = _PATTERN_WEIGHT_OFFSETS + indices
-        base_weights = weights[base_weight_indices]
-        base_value = float(base_weights.sum(dtype=np.float64))
-        patterns, positions = _empty_pattern_memberships(empty_mask)
+        base_value = float(weights[base_weight_indices].sum(dtype=np.float64))
         membership_weight_indices = _PATTERN_WEIGHT_OFFSETS[patterns] + indices[patterns]
         increments = _PATTERN_INDEX_INCREMENTS[positions]
         base = weights[membership_weight_indices]
@@ -382,7 +421,6 @@ class NTupleValue:
         total += 0.9 * float(value_two.sum(dtype=np.float64))
         total += 0.1 * float(value_four.sum(dtype=np.float64))
         return total / count
-
     def update(self, state: np.ndarray, reward: float, next_state: np.ndarray, terminal: bool) -> float:
         """Semi-gradient TD(0): fit value to reward plus discounted next-state value."""
         indices = pattern_indices(state)
