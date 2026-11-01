@@ -187,6 +187,22 @@ _PATTERN_MEMBERSHIP_ARRAYS = tuple(
     for cell in range(16)
 )
 
+
+@lru_cache(maxsize=2048)
+def _empty_pattern_memberships(empty_mask: int) -> tuple[np.ndarray, np.ndarray]:
+    cells = [cell for cell in range(16) if empty_mask & (1 << cell)]
+    count = sum(len(_PATTERN_MEMBERSHIP_ARRAYS[cell][0]) for cell in cells)
+    patterns = np.empty(count, dtype=np.intp)
+    positions = np.empty(count, dtype=np.intp)
+    offset = 0
+    for cell in cells:
+        cell_patterns, cell_positions = _PATTERN_MEMBERSHIP_ARRAYS[cell]
+        end = offset + len(cell_patterns)
+        patterns[offset:end] = cell_patterns
+        positions[offset:end] = cell_positions
+        offset = end
+    return patterns, positions
+
 def pattern_indices(board: np.ndarray) -> np.ndarray:
     exponents = exponent_board(board).reshape(-1)
     selected = exponents[_PATTERN_CELLS].astype(np.int32, copy=False)
@@ -208,24 +224,16 @@ class NTupleValue:
     def expected_spawn_value(self, board: np.ndarray) -> float:
         """Exact expected evaluator after one random spawn, without allocating child boards."""
         flat = np.asarray(board).reshape(-1)
-        empty = np.flatnonzero(flat == 0)
-        if len(empty) == 0:
+        empty_mask = 0
+        for cell, value in enumerate(flat):
+            if value == 0:
+                empty_mask |= 1 << cell
+        if empty_mask == 0:
             return self.value(board)
         indices = pattern_indices(board)
         base_weights = self.weights[np.arange(PATTERN_COUNT), indices]
         base_value = float(base_weights.sum(dtype=np.float64))
-        membership_count = sum(
-            len(_PATTERN_MEMBERSHIP_ARRAYS[int(cell)][0]) for cell in empty
-        )
-        patterns = np.empty(membership_count, dtype=np.intp)
-        positions = np.empty(membership_count, dtype=np.intp)
-        offset = 0
-        for cell in empty:
-            cell_patterns, cell_positions = _PATTERN_MEMBERSHIP_ARRAYS[int(cell)]
-            end = offset + len(cell_patterns)
-            patterns[offset:end] = cell_patterns
-            positions[offset:end] = cell_positions
-            offset = end
+        patterns, positions = _empty_pattern_memberships(empty_mask)
         base_indices = indices[patterns]
         increments = _PATTERN_INDEX_INCREMENTS[positions]
         base = self.weights[patterns, base_indices]
