@@ -30,24 +30,96 @@ TILE_COLORS = {
 }
 ACTION_NAMES = ("LEFT", "DOWN", "RIGHT", "UP")
 
-def draw_board(screen, board, rect, font):
+def tile_font(size):
+    if size not in _TILE_FONTS:
+        _TILE_FONTS[size] = pygame.font.SysFont("arial", size, bold=True)
+    return _TILE_FONTS[size]
+
+
+_TILE_FONTS = {}
+
+
+def draw_tile(screen, value, rect, board_size):
+    color = TILE_COLORS.get(value, (60, 58, 50))
+    pygame.draw.rect(screen, color, rect, border_radius=5)
+    ink = TEXT if value <= 4 else (255, 255, 255)
+    if value >= 1024:
+        size = max(15, min(25, int(board_size * 0.052)))
+    elif value >= 128:
+        size = max(18, min(29, int(board_size * 0.06)))
+    else:
+        size = max(22, min(36, int(board_size * 0.075)))
+    label = tile_font(size).render(str(value), True, ink)
+    screen.blit(label, label.get_rect(center=rect.center))
+
+
+def draw_board(screen, board, rect, font=None):
     x, y, w, h = rect
     pygame.draw.rect(screen, PANEL, rect, border_radius=8)
-    gap = 7
+    gap = 9
     cell = (min(w, h) - gap * 5) / 4
     for r in range(4):
         for c in range(4):
             value = int(board[r, c])
-            cx = x + gap + c * (cell + gap)
-            cy = y + gap + r * (cell + gap)
-            color = EMPTY if value == 0 else TILE_COLORS.get(value, (60, 58, 50))
-            pygame.draw.rect(screen, color, (cx, cy, cell, cell), border_radius=5)
+            tile_rect = pygame.Rect(
+                round(x + gap + c * (cell + gap)),
+                round(y + gap + r * (cell + gap)),
+                round(cell),
+                round(cell),
+            )
             if value:
-                ink = TEXT if value <= 4 else (255, 255, 255)
-                size = max(12, int(cell * (0.37 if value >= 1024 else 0.44)))
-                tile_font = pygame.font.SysFont("arial", size, bold=True)
-                label = tile_font.render(str(value), True, ink)
-                screen.blit(label, label.get_rect(center=(cx + cell / 2, cy + cell / 2)))
+                draw_tile(screen, value, tile_rect, min(w, h))
+            else:
+                pygame.draw.rect(screen, EMPTY, tile_rect, border_radius=5)
+
+
+def draw_animated_board(screen, previous, current, action, rect, progress):
+    x, y, w, h = rect
+    pygame.draw.rect(screen, PANEL, rect, border_radius=8)
+    gap = 9
+    cell = (min(w, h) - gap * 5) / 4
+    for r in range(4):
+        for c in range(4):
+            tile_rect = pygame.Rect(
+                round(x + gap + c * (cell + gap)),
+                round(y + gap + r * (cell + gap)),
+                round(cell),
+                round(cell),
+            )
+            pygame.draw.rect(screen, EMPTY, tile_rect, border_radius=5)
+
+    if action == 0:
+        lines = [[(r, c) for c in range(4)] for r in range(4)]
+    elif action == 2:
+        lines = [[(r, c) for c in range(3, -1, -1)] for r in range(4)]
+    elif action == 3:
+        lines = [[(r, c) for r in range(4)] for c in range(4)]
+    else:
+        lines = [[(r, c) for r in range(3, -1, -1)] for c in range(4)]
+
+    eased = 1 - (1 - progress) ** 3
+    for line in lines:
+        tiles = [(pos, int(previous[pos])) for pos in line if previous[pos]]
+        out = 0
+        i = 0
+        while i < len(tiles):
+            source, value = tiles[i]
+            destination = line[out]
+            targets = [source]
+            if i + 1 < len(tiles) and tiles[i + 1][1] == value:
+                targets.append(tiles[i + 1][0])
+                i += 1
+            target_x = x + gap + destination[1] * (cell + gap)
+            target_y = y + gap + destination[0] * (cell + gap)
+            for source_pos in targets:
+                source_x = x + gap + source_pos[1] * (cell + gap)
+                source_y = y + gap + source_pos[0] * (cell + gap)
+                px = source_x + (target_x - source_x) * eased
+                py = source_y + (target_y - source_y) * eased
+                tile_rect = pygame.Rect(round(px), round(py), round(cell), round(cell))
+                draw_tile(screen, value, tile_rect, min(w, h))
+            out += 1
+            i += 1
 
 def load_evaluator(path: str | None) -> NTupleValue:
     evaluator = NTupleValue()
@@ -320,6 +392,20 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
         last_action = "Ready"
         schedule_plan()
 
+    def animate_move(previous, action):
+        board_rect = pygame.Rect(board_x, board_y, board_size, board_size)
+        started = time.perf_counter()
+        duration = 0.115
+        while True:
+            progress = min(1.0, (time.perf_counter() - started) / duration)
+            draw_animated_board(screen, previous, game.board, action, board_rect, progress)
+            pygame.display.flip()
+            clock.tick(60)
+            if progress >= 1.0:
+                break
+        draw_board(screen, game.board, board_rect)
+        pygame.display.flip()
+
     def draw_button(rect, label, enabled=True):
         color = (119, 110, 101) if enabled else (180, 174, 166)
         pygame.draw.rect(screen, color, rect, border_radius=5)
@@ -433,8 +519,10 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                             }
                             action = human_actions.get(event.key)
                             if action is not None:
+                                previous_board = game.board.copy()
                                 moved, _, terminal = game.step(action)
                                 if moved:
+                                    animate_move(previous_board, action)
                                     last_action = ACTION_NAMES[action]
                                     best_score = max(best_score, game.score)
                                     save_best_score()
@@ -457,8 +545,10 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                                     and planned_action in legal_actions_safe(game.board)
                                     and now - last_move_time >= move_debounce_seconds):
                                 last_move_time = now
+                                previous_board = game.board.copy()
                                 moved, _, terminal = game.step(planned_action)
                                 if moved:
+                                    animate_move(previous_board, planned_action)
                                     last_action = ACTION_NAMES[planned_action]
                                     best_score = max(best_score, game.score)
                                     save_best_score()
@@ -474,8 +564,10 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
                 planned_board = move_plan["board"]
                 planned_action = move_plan["action"]
             if planned_board == game.board.tobytes() and planned_action in legal_actions_safe(game.board):
+                previous_board = game.board.copy()
                 moved, _, terminal = game.step(planned_action)
                 if moved:
+                    animate_move(previous_board, planned_action)
                     last_action = ACTION_NAMES[planned_action]
                     best_score = max(best_score, game.score)
                     save_best_score()
