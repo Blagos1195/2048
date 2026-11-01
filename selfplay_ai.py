@@ -214,9 +214,18 @@ class NTupleValue:
         indices = pattern_indices(board)
         base_weights = self.weights[np.arange(PATTERN_COUNT), indices]
         base_value = float(base_weights.sum(dtype=np.float64))
-        memberships = [_PATTERN_MEMBERSHIP_ARRAYS[int(cell)] for cell in empty]
-        patterns = np.concatenate([item[0] for item in memberships])
-        positions = np.concatenate([item[1] for item in memberships])
+        membership_count = sum(
+            len(_PATTERN_MEMBERSHIP_ARRAYS[int(cell)][0]) for cell in empty
+        )
+        patterns = np.empty(membership_count, dtype=np.intp)
+        positions = np.empty(membership_count, dtype=np.intp)
+        offset = 0
+        for cell in empty:
+            cell_patterns, cell_positions = _PATTERN_MEMBERSHIP_ARRAYS[int(cell)]
+            end = offset + len(cell_patterns)
+            patterns[offset:end] = cell_patterns
+            positions[offset:end] = cell_positions
+            offset = end
         base_indices = indices[patterns]
         increments = _PATTERN_INDEX_INCREMENTS[positions]
         base = self.weights[patterns, base_indices]
