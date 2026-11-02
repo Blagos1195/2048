@@ -116,6 +116,34 @@ def test_expected_spawn_value_matches_reference_on_random_boards():
 
 
 
+def test_can_move_kernel_matches_reference_for_random_boards():
+    from selfplay_ai import can_move
+
+    rng = np.random.default_rng(181)
+    boards = [
+        np.zeros((4, 4), dtype=np.uint32),
+        np.arange(1, 17, dtype=np.uint32).reshape(4, 4),
+        np.array([
+            [2, 4, 8, 16],
+            [4, 8, 16, 2],
+            [8, 16, 2, 4],
+            [16, 2, 4, 8],
+        ], dtype=np.uint32),
+    ]
+    boards.extend(
+        rng.choice([0, 2, 4, 8, 16, 32], size=(4, 4)).astype(np.uint32)
+        for _ in range(500)
+    )
+
+    for board in boards:
+        expected = bool(
+            np.any(board == 0)
+            or np.any(board[:, :-1] == board[:, 1:])
+            or np.any(board[:-1, :] == board[1:, :])
+        )
+        assert can_move(board) is expected
+
+
 def test_engine_imports_and_evaluates_without_numba():
     import subprocess
     import sys
