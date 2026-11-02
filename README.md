@@ -10,7 +10,7 @@ Python 3.10+ is recommended. There is one dependency file:
 python -m pip install -r requirements.txt
 ```
 
-This installs NumPy, **pygame-ce** (imported in Python as `pygame`), and pytest.
+This installs NumPy, **pygame-ce** (imported in Python as `pygame`), Numba for accelerated search, and pytest.
 
 Run the tests:
 
@@ -108,9 +108,7 @@ plain text:
 python profile_search.py --model models/selfplay/best.npz --depth 1 --moves 8 --output artifacts/profile.txt
 ```
 
-The GitHub Actions performance workflow runs these checks along with `python -m
-pytest -q`, a two-worker training smoke run, and a resume-from-checkpoint run.
-Benchmark and profile reports are uploaded as workflow artifacts.
+GitHub Actions runs the test suite, a two-worker training smoke run, and a resume-from-checkpoint check. Performance comparisons are run separately when evaluating code changes.
 
 ## Graphical modes
 
