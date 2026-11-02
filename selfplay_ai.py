@@ -346,9 +346,9 @@ def _expected_spawn_value_kernel(board, exponent_lookup, weights, pattern_cells,
                                 increments, empty_count):
     exponents = np.empty(16, dtype=np.uint8)
     for cell in range(16):
-        value = int(board[cell])
+        value = np.int64(board[cell])
         if value > 32768:
-            value = 32768
+            value = np.int64(32768)
         exponents[cell] = exponent_lookup[value]
 
     indices = np.empty(pattern_cells.shape[0], dtype=np.int32)
