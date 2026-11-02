@@ -42,10 +42,10 @@ jobs:
           MODEL="$GITHUB_WORKSPACE/models/selfplay/best.npz"
           (
             cd "$RUNNER_TEMP/baseline"
-            python -c "from selfplay_ai import Game2048, NTupleValue; board=Game2048(1).board; NTupleValue().expected_spawn_value(board)"
+            python -c "from selfplay_ai import Game2048, NTupleValue, _apply_action, can_move; board=Game2048(1).board; _apply_action(board, 0); can_move(board); NTupleValue().expected_spawn_value(board)"
             python main.py benchmark --model "$MODEL" --games 5 --depths 1 2 --seed 4200200 --output "$RUNNER_TEMP/baseline.csv"
           )
-          python -c "from selfplay_ai import Game2048, NTupleValue; board=Game2048(1).board; NTupleValue().expected_spawn_value(board)"
+          python -c "from selfplay_ai import Game2048, NTupleValue, _apply_action, can_move; board=Game2048(1).board; _apply_action(board, 0); can_move(board); NTupleValue().expected_spawn_value(board)"
           python main.py benchmark --model "$MODEL" --games 5 --depths 1 2 --seed 4200200 --output "$RUNNER_TEMP/candidate.csv"
           python - "$RUNNER_TEMP/baseline.csv" "$RUNNER_TEMP/candidate.csv" <<'PY'
           import csv
