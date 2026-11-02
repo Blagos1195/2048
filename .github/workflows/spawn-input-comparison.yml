@@ -1,0 +1,72 @@
+name: Spawn input comparison
+
+on:
+  push:
+    branches:
+      - speed/fused-spawn-inputs
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: candidate
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          path: baseline
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: python -m pip install -r candidate/requirements.txt
+      - name: Compare fixed-seed search
+        shell: bash
+        run: |
+          set -euo pipefail
+          for order in baseline candidate candidate baseline; do
+            cd "$GITHUB_WORKSPACE/$order"
+            PYTHONPATH=. python - <<'PY'
+          import os
+          import time
+          import numpy as np
+          from selfplay_ai import (
+              NTupleValue, Game2048, ExpectimaxAgent, play_game,
+              _apply_action, PATTERN_COUNT, PATTERN_TABLE_SIZE,
+          )
+          evaluator = NTupleValue(seed=2026)
+          rng = np.random.default_rng(2026)
+          evaluator.weights[:] = rng.normal(
+              0.0, 0.02, (PATTERN_COUNT, PATTERN_TABLE_SIZE)
+          ).astype(np.float32)
+          board = Game2048(2026).board
+          evaluator.value(board)
+          evaluator.expected_spawn_value(board)
+          _apply_action(board, 0)
+          for depth in (1, 2):
+              rows = []
+              started = time.perf_counter()
+              for seed in range(700200, 700210):
+                  agent = ExpectimaxAgent(evaluator, depth=depth, seed=seed)
+                  rows.append(play_game(agent, seed, train=False))
+              elapsed = time.perf_counter() - started
+              scores = [row["score"] for row in rows]
+              tiles = [row["max_tile"] for row in rows]
+              print({
+                  "version": os.path.basename(os.getcwd()),
+                  "depth": depth,
+                  "seconds": round(elapsed, 6),
+                  "avg_score": float(np.mean(scores)),
+                  "median_score": float(np.median(scores)),
+                  "rate_2048": float(np.mean(np.asarray(tiles) >= 2048)),
+                  "rate_4096": float(np.mean(np.asarray(tiles) >= 4096)),
+                  "avg_max_tile": float(np.mean(tiles)),
+                  "search_nodes": int(sum(row["search_nodes"] for row in rows)),
+              }, flush=True)
+          PY
+          done
