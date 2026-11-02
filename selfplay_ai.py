@@ -263,8 +263,13 @@ def _empty_pattern_memberships(empty_mask: int) -> tuple[np.ndarray, np.ndarray]
 
 def pattern_indices(board: np.ndarray) -> np.ndarray:
     exponents = exponent_board(board).reshape(-1)
-    selected = exponents[_PATTERN_CELLS].astype(np.int32, copy=False)
-    return selected @ _PATTERN_PLACE_VALUES
+    selected = exponents[_PATTERN_CELLS]
+    return (
+        selected[:, 0].astype(np.int32) * _PATTERN_PLACE_VALUES[0]
+        + selected[:, 1].astype(np.int32) * _PATTERN_PLACE_VALUES[1]
+        + selected[:, 2].astype(np.int32) * _PATTERN_PLACE_VALUES[2]
+        + selected[:, 3].astype(np.int32)
+    )
 
 class NTupleValue:
     """Learned board evaluator; weights start at zero and change via real TD updates."""
