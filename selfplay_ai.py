@@ -263,10 +263,24 @@ def legal_actions(board: np.ndarray) -> list[int]:
                 break
     return legal
 
+@njit(cache=True)
+def _can_move_kernel(board):
+    flat = board.reshape(16)
+    for cell in range(16):
+        if flat[cell] == 0:
+            return True
+    for row in range(4):
+        for column in range(4):
+            index = row * 4 + column
+            if column < 3 and flat[index] == flat[index + 1]:
+                return True
+            if row < 3 and flat[index] == flat[index + 4]:
+                return True
+    return False
+
+
 def can_move(board: np.ndarray) -> bool:
-    if np.any(board == 0):
-        return True
-    return bool(np.any(board[:, :-1] == board[:, 1:]) or np.any(board[:-1, :] == board[1:, :]))
+    return bool(_can_move_kernel(np.asarray(board)))
 
 class Game2048:
     """Fast headless simulator with reproducible per-game randomness."""
