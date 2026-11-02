@@ -88,7 +88,6 @@ def _build_row_transitions() -> tuple[tuple[tuple[int, int, int, int], int], ...
 _ROW_TRANSITIONS = _build_row_transitions()
 
 
-@lru_cache(maxsize=65536)
 def _slide_row(values: tuple[int, int, int, int]) -> tuple[tuple[int, int, int, int], int]:
     """Use precomputed transitions for standard 2048 tiles and a general fallback otherwise."""
     exponents = []
