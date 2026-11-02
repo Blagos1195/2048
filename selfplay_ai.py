@@ -371,6 +371,25 @@ def _expected_spawn_value_kernel(board, exponent_lookup, weights, pattern_cells,
         delta_total += 0.9 * value_two + 0.1 * value_four - base
     return base_value + delta_total / empty_count
 
+@njit(cache=True)
+def _value_kernel(board, exponent_lookup, weights, pattern_cells,
+                  place_values, weight_offsets):
+    exponents = np.empty(16, dtype=np.uint8)
+    for cell in range(16):
+        value = np.int64(board[cell])
+        if value > 32768:
+            value = np.int64(32768)
+        exponents[cell] = exponent_lookup[value]
+
+    total = 0.0
+    for pattern in range(pattern_cells.shape[0]):
+        index = 0
+        for position in range(4):
+            index += int(exponents[pattern_cells[pattern, position]]) * int(place_values[position])
+        total += float(weights[weight_offsets[pattern] + index])
+    return total
+
+
 class NTupleValue:
     """Learned board evaluator; weights start at zero and change via real TD updates."""
     def __init__(self, alpha: float = 0.08, gamma: float = 0.995, seed: int = 1):
@@ -381,8 +400,14 @@ class NTupleValue:
         self.updates = 0
 
     def value(self, board: np.ndarray) -> float:
-        indices = pattern_indices(board)
-        return float(self.weights[np.arange(PATTERN_COUNT), indices].sum(dtype=np.float64))
+        return float(_value_kernel(
+            np.asarray(board).reshape(-1),
+            _TILE_EXPONENT_LOOKUP,
+            self.weights.reshape(-1),
+            _PATTERN_CELLS,
+            _PATTERN_PLACE_VALUES,
+            _PATTERN_WEIGHT_OFFSETS,
+        ))
 
     def expected_spawn_value(self, board: np.ndarray) -> float:
         """Exact expected evaluator after one random spawn, without allocating child boards."""

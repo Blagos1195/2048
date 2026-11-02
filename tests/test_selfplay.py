@@ -32,6 +32,28 @@ def test_action_rotations_are_consistent():
     assert score == 4
 
 
+def test_compiled_value_matches_pattern_indices():
+    evaluator = NTupleValue(seed=7)
+    evaluator.weights[:] = np.random.default_rng(8).normal(
+        size=evaluator.weights.shape
+    ).astype(np.float32)
+    boards = [
+        np.array([
+            [2, 4, 8, 16],
+            [32, 64, 128, 256],
+            [512, 1024, 2048, 4096],
+            [8192, 16384, 32768, 65536],
+        ], dtype=np.uint32),
+        np.zeros((4, 4), dtype=np.uint32),
+    ]
+    for board in boards:
+        indices = pattern_indices(board)
+        expected = float(
+            evaluator.weights[np.arange(len(indices)), indices].sum(dtype=np.float64)
+        )
+        assert evaluator.value(board) == pytest.approx(expected, abs=1e-5)
+
+
 def test_game_seed_reproducibility():
     a, b = Game2048(42), Game2048(42)
     assert np.array_equal(a.board, b.board)
