@@ -32,7 +32,7 @@ Train on your laptop as usual. Copy the newly evaluated `models/selfplay/best.np
 
 Commit and push the updated binary model. The website fetches that file on page load. The browser does not upload games or change the model.
 
-Keep the checkpoint format compatible with `NTupleValue.load()`. The browser starts at search depth 1. The hidden settings panel allows depths 1, 2, and 3. Higher depths can be much slower, especially on phones.
+Keep the checkpoint format compatible with `NTupleValue.load()`. The browser starts at search depth 1. The hidden settings panel allows depths 1, 2, 3, and 4. Higher depths can be much slower, especially on phones.
 
 ## Current limitations
 
