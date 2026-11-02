@@ -518,7 +518,7 @@ def test_direct_actions_match_reference_for_random_boards():
 
     for _ in range(500):
         board = rng.choice(
-            [0, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048],
+            [0, 2, 3, 4, 6, 8, 12, 16, 32, 64, 128, 256, 512, 1024, 2048, 65536],
             size=(4, 4),
         ).astype(np.uint32)
         expected_legal = []
