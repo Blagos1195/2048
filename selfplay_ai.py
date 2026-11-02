@@ -157,19 +157,42 @@ def _action_line(board: np.ndarray, action: int, line: int) -> tuple[tuple[tuple
 def _apply_action(board: np.ndarray, action: int) -> tuple[np.ndarray, int, bool]:
     if action not in ACTIONS:
         raise ValueError("action must be 0=left, 1=down, 2=right, or 3=up")
-    board = np.asarray(board)
-    flat = board.reshape(-1)
+    flat = np.asarray(board).reshape(-1)
     out = np.empty((4, 4), dtype=np.uint32)
     out_flat = out.reshape(-1)
+    lines = _ACTION_LINE_INDICES[action]
+    slide = _slide_row
     gained = 0
     changed = False
-    for line in range(4):
-        i0, i1, i2, i3 = _ACTION_LINE_INDICES[action][line]
-        values = (int(flat[i0]), int(flat[i1]), int(flat[i2]), int(flat[i3]))
-        moved, score = _slide_row(values)
-        gained += score
-        changed |= moved != values
-        out_flat[i0], out_flat[i1], out_flat[i2], out_flat[i3] = moved
+
+    i0, i1, i2, i3 = lines[0]
+    values = (int(flat[i0]), int(flat[i1]), int(flat[i2]), int(flat[i3]))
+    moved, score = slide(values)
+    gained += score
+    changed |= moved != values
+    out_flat[i0], out_flat[i1], out_flat[i2], out_flat[i3] = moved
+
+    i0, i1, i2, i3 = lines[1]
+    values = (int(flat[i0]), int(flat[i1]), int(flat[i2]), int(flat[i3]))
+    moved, score = slide(values)
+    gained += score
+    changed |= moved != values
+    out_flat[i0], out_flat[i1], out_flat[i2], out_flat[i3] = moved
+
+    i0, i1, i2, i3 = lines[2]
+    values = (int(flat[i0]), int(flat[i1]), int(flat[i2]), int(flat[i3]))
+    moved, score = slide(values)
+    gained += score
+    changed |= moved != values
+    out_flat[i0], out_flat[i1], out_flat[i2], out_flat[i3] = moved
+
+    i0, i1, i2, i3 = lines[3]
+    values = (int(flat[i0]), int(flat[i1]), int(flat[i2]), int(flat[i3]))
+    moved, score = slide(values)
+    gained += score
+    changed |= moved != values
+    out_flat[i0], out_flat[i1], out_flat[i2], out_flat[i3] = moved
+
     return out, gained, changed
 
 
