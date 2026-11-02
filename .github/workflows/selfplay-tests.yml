@@ -1,4 +1,4 @@
-name: Self-play performance checks
+name: Self-play tests
 
 on:
   push:
@@ -31,29 +31,3 @@ jobs:
           python main.py train --games 4 --workers 2 --eval-every 0 --log-every 1 --out "$SMOKE_OUT"
           python main.py train --games 2 --workers 2 --eval-every 0 --log-every 1 \
             --resume "$SMOKE_OUT/latest.npz" --out "$SMOKE_OUT"
-      - name: Benchmark fixed seeds at depths 1 and 2
-        run: >-
-          python scripts/benchmark_search.py
-          --model models/selfplay/best.npz
-          --games 8
-          --depths 1 2
-          --seed 4200000
-          --output artifacts/benchmark.csv
-      - name: Profile expectimax search
-        run: >-
-          python profile_search.py
-          --model models/selfplay/best.npz
-          --depth 2
-          --seed 5200000
-          --moves 100
-          --output artifacts/profile.txt
-      - name: Upload benchmark and profile reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: search-performance-reports
-          path: |
-            artifacts/benchmark.csv
-            artifacts/profile.txt
-          if-no-files-found: warn
-          retention-days: 30

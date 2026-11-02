@@ -22,6 +22,14 @@ from pathlib import Path
 
 import numpy as np
 
+try:
+    from numba import njit
+except ImportError:
+    def njit(*args, **kwargs):
+        def decorate(function):
+            return function
+        return decorate
+
 ACTIONS = (0, 1, 2, 3)
 ACTION_NAMES = ("LEFT", "DOWN", "RIGHT", "UP")
 TILE_EXPONENT_CAP = 15
@@ -266,6 +274,31 @@ def pattern_indices(board: np.ndarray) -> np.ndarray:
     selected = exponents[_PATTERN_CELLS].astype(np.int32, copy=False)
     return selected @ _PATTERN_PLACE_VALUES
 
+
+@njit(cache=True)
+def _expected_spawn_value_kernel(exponents, weights, pattern_cells, place_values,
+                                weight_offsets, patterns, positions, increments,
+                                empty_count):
+    indices = np.empty(pattern_cells.shape[0], dtype=np.int32)
+    base_value = 0.0
+    for pattern in range(pattern_cells.shape[0]):
+        index = 0
+        for position in range(4):
+            index += int(exponents[pattern_cells[pattern, position]]) * int(place_values[position])
+        indices[pattern] = index
+        base_value += float(weights[weight_offsets[pattern] + index])
+
+    delta_total = 0.0
+    for membership in range(patterns.shape[0]):
+        pattern = patterns[membership]
+        index = weight_offsets[pattern] + indices[pattern]
+        increment = increments[positions[membership]]
+        base = float(weights[index])
+        value_two = float(weights[index + increment])
+        value_four = float(weights[index + 2 * increment])
+        delta_total += 0.9 * value_two + 0.1 * value_four - base
+    return base_value + delta_total / empty_count
+
 class NTupleValue:
     """Learned board evaluator; weights start at zero and change via real TD updates."""
     def __init__(self, alpha: float = 0.08, gamma: float = 0.995, seed: int = 1):
@@ -288,21 +321,18 @@ class NTupleValue:
                 empty_mask |= 1 << cell
         if empty_mask == 0:
             return self.value(board)
-        indices = pattern_indices(board)
-        weights = self.weights.reshape(-1)
-        base_weight_indices = _PATTERN_WEIGHT_OFFSETS + indices
-        base_weights = weights[base_weight_indices]
-        base_value = float(base_weights.sum(dtype=np.float64))
         patterns, positions = _empty_pattern_memberships(empty_mask)
-        membership_weight_indices = _PATTERN_WEIGHT_OFFSETS[patterns] + indices[patterns]
-        increments = _PATTERN_INDEX_INCREMENTS[positions]
-        base = weights[membership_weight_indices]
-        value_two = weights[membership_weight_indices + increments]
-        value_four = weights[membership_weight_indices + 2 * increments]
-        count = empty_mask.bit_count()
-        delta = 0.9 * value_two + 0.1 * value_four - base
-        total = count * base_value + float(delta.sum(dtype=np.float64))
-        return total / count
+        return float(_expected_spawn_value_kernel(
+            exponent_board(board).reshape(-1),
+            self.weights.reshape(-1),
+            _PATTERN_CELLS,
+            _PATTERN_PLACE_VALUES,
+            _PATTERN_WEIGHT_OFFSETS,
+            patterns,
+            positions,
+            _PATTERN_INDEX_INCREMENTS,
+            empty_mask.bit_count(),
+        ))
 
     def update(self, state: np.ndarray, reward: float, next_state: np.ndarray, terminal: bool) -> float:
         """Semi-gradient TD(0): fit value to reward plus discounted next-state value."""
