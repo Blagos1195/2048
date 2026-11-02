@@ -274,10 +274,6 @@ class NTupleValue:
         self.gamma = float(gamma)
         self.rng = np.random.default_rng(seed)
         self.updates = 0
-        self._spawn_base = np.empty(PATTERN_COUNT * 4 * 16, dtype=np.float32)
-        self._spawn_two = np.empty(PATTERN_COUNT * 4 * 16, dtype=np.float32)
-        self._spawn_four = np.empty(PATTERN_COUNT * 4 * 16, dtype=np.float32)
-        self._spawn_delta = np.empty(PATTERN_COUNT * 4 * 16, dtype=np.float32)
 
     def value(self, board: np.ndarray) -> float:
         indices = pattern_indices(board)
@@ -295,25 +291,16 @@ class NTupleValue:
         indices = pattern_indices(board)
         weights = self.weights.reshape(-1)
         base_weight_indices = _PATTERN_WEIGHT_OFFSETS + indices
-        base_weights = self._spawn_base[:PATTERN_COUNT]
-        np.take(weights, base_weight_indices, out=base_weights)
+        base_weights = weights[base_weight_indices]
         base_value = float(base_weights.sum(dtype=np.float64))
         patterns, positions = _empty_pattern_memberships(empty_mask)
         membership_weight_indices = _PATTERN_WEIGHT_OFFSETS[patterns] + indices[patterns]
         increments = _PATTERN_INDEX_INCREMENTS[positions]
-        size = len(membership_weight_indices)
-        base = self._spawn_base[:size]
-        value_two = self._spawn_two[:size]
-        value_four = self._spawn_four[:size]
-        delta = self._spawn_delta[:size]
-        np.take(weights, membership_weight_indices, out=base)
-        np.take(weights, membership_weight_indices + increments, out=value_two)
-        np.take(weights, membership_weight_indices + 2 * increments, out=value_four)
-        np.multiply(value_two, 0.9, out=delta)
-        np.multiply(value_four, 0.1, out=value_four)
-        np.add(delta, value_four, out=delta)
-        np.subtract(delta, base, out=delta)
+        base = weights[membership_weight_indices]
+        value_two = weights[membership_weight_indices + increments]
+        value_four = weights[membership_weight_indices + 2 * increments]
         count = empty_mask.bit_count()
+        delta = 0.9 * value_two + 0.1 * value_four - base
         total = count * base_value + float(delta.sum(dtype=np.float64))
         return total / count
 
@@ -594,10 +581,6 @@ def _init_parallel_worker(shm_name: str, shape: tuple[int, ...], alpha: float, g
     evaluator.gamma = float(gamma)
     evaluator.rng = np.random.default_rng(1)
     evaluator.updates = 0
-    evaluator._spawn_base = np.empty(PATTERN_COUNT * 4 * 16, dtype=np.float32)
-    evaluator._spawn_two = np.empty(PATTERN_COUNT * 4 * 16, dtype=np.float32)
-    evaluator._spawn_four = np.empty(PATTERN_COUNT * 4 * 16, dtype=np.float32)
-    evaluator._spawn_delta = np.empty(PATTERN_COUNT * 4 * 16, dtype=np.float32)
     _WORKER_EVALUATOR = evaluator
     _WORKER_DEPTH = int(depth)
 
