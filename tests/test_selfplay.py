@@ -393,15 +393,15 @@ def test_expectimax_search_evaluates_only_requested_depth(monkeypatch):
     ], dtype=np.uint32)
     calls = []
 
-    def fake_player(state, depth, action):
+    def fake_chance(state, depth):
         calls.append(depth)
-        return float(action)
+        return float(np.asarray(state).sum())
 
-    monkeypatch.setattr(agent, "_player", fake_player)
+    monkeypatch.setattr(agent, "_chance", fake_chance)
     action = agent.choose_action(board)
     assert action in legal_actions(board)
     assert calls
-    assert set(calls) == {3}
+    assert set(calls) == {2}
 
 
 def test_legacy_eight_pattern_checkpoint_migrates_without_losing_weights(tmp_path):
