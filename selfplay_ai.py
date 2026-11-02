@@ -384,15 +384,21 @@ class ExpectimaxAgent:
             cache.popitem(last=False)
 
     def choose_action(self, board: np.ndarray) -> int:
-        actions = legal_actions(board)
-        if not actions:
-            raise ValueError("No legal actions available")
         if self.rng.random() < self.epsilon:
+            actions = legal_actions(board)
+            if not actions:
+                raise ValueError("No legal actions available")
             return self.rng.choice(actions)
         self.nodes = 0
         self.cache_hits = 0
 
-        scored = [(self._player(board, self.depth, a), a) for a in actions]
+        scored = []
+        for action in ACTIONS:
+            moved, merge_score, changed = _apply_action(board, action)
+            if changed:
+                scored.append((merge_score / 128.0 + self._chance(moved, self.depth - 1), action))
+        if not scored:
+            raise ValueError("No legal actions available")
         best = max(v for v, _ in scored)
         return self.rng.choice([a for v, a in scored if abs(v - best) < 1e-9])
 
