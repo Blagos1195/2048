@@ -137,7 +137,7 @@ class Launcher:
 
         window = self.dialog("Continue training" if resume else "Train a new AI")
         games = tk.StringVar(value="100000")
-        depth = tk.StringVar(value="1")
+        depth = tk.StringVar(value="2")
         workers = tk.StringVar(value="Automatic (up to 4)")
         eval_every = tk.StringVar(value="10000")
         eval_games = tk.StringVar(value="20")
@@ -147,7 +147,6 @@ class Launcher:
 
         ttk.Label(window.frame, text="Training settings", font=("Segoe UI", 13, "bold")).pack(anchor="w", pady=(0, 8))
         self.field(window, "Training games", games, ["1000", "10000", "50000", "100000", "250000", "500000"])
-        self.field(window, "Training search depth", depth, ["1", "2", "3"])
         self.field(window, "Workers", workers, ["Automatic (up to 4)", "1", "2", "3", "4"])
         self.field(window, "Evaluate every N games", eval_every, ["0", "1000", "5000", "10000", "25000"])
         self.field(window, "Games per evaluation", eval_games, ["5", "10", "20", "30", "50"])
@@ -197,10 +196,10 @@ class Launcher:
             return
         window = self.dialog("LARP mode" if larp else "Watch the AI")
         depth = tk.StringVar(value="2")
-        self.field(window, "Search depth", depth, ["1", "2", "3", "4"])
+        self.field(window, "Search depth", depth, ["1", "2", "3", "4", "5"])
         def start():
-            if depth.get() not in {"1", "2", "3", "4"}:
-                messagebox.showerror("Invalid depth", "Choose a search depth from 1 to 4.", parent=window)
+            if depth.get() not in {"1", "2", "3", "4", "5"}:
+                messagebox.showerror("Invalid depth", "Choose a search depth from 1 to 5.", parent=window)
                 return
             window.destroy()
             mode = "4" if larp else "3"
@@ -214,10 +213,9 @@ class Launcher:
         window = self.dialog("Watch live training")
         games = tk.StringVar(value="10000")
         speed = tk.StringVar(value="Fast")
-        depth = tk.StringVar(value="1")
+        depth = tk.StringVar(value="2")
         self.field(window, "Training games", games, ["100", "1000", "5000", "10000", "50000"])
         self.field(window, "Animation speed", speed, ["Fast", "Slow"])
-        self.field(window, "Training depth", depth, ["1", "2"])
         def start():
             try:
                 count = int(games.get())

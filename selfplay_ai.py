@@ -1013,7 +1013,7 @@ depth 2 can play better but takes considerably longer.""",
     )
     t.add_argument("--games", type=int, default=100_000,
                    help="number of training games to play")
-    t.add_argument("--depth", type=int, default=1,
+    t.add_argument("--depth", type=int, default=2,
                    help="search depth used while training; 1 is fast, higher values are slower")
     t.add_argument("--seed", type=int, default=20261028,
                    help="random seed; reuse it to make runs more reproducible")
