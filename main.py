@@ -124,7 +124,7 @@ def main() -> None:
         help="1: fast training view; 2: slower training view; 3: watch AI; 4: step through AI moves",
     )
     parser.add_argument("--games", type=int, default=100000, help="training games for modes 1 and 2")
-    parser.add_argument("--depth", type=int, default=1, help="AI search depth; higher is stronger but slower")
+    parser.add_argument("--depth", type=int, default=2, help="AI search depth; higher is stronger but slower")
     parser.add_argument("--seed", type=int, default=20261028, help="random seed for repeatable runs")
     parser.add_argument("--out", default="models/selfplay", help="folder for saved training checkpoints")
     parser.add_argument("--model", default=None, help="checkpoint .npz to load in modes 3 and 4")
