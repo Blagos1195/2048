@@ -31,3 +31,4 @@ jobs:
           python main.py train --games 4 --workers 2 --eval-every 0 --log-every 1 --out "$SMOKE_OUT"
           python main.py train --games 2 --workers 2 --eval-every 0 --log-every 1 \
             --resume "$SMOKE_OUT/latest.npz" --out "$SMOKE_OUT"
+
