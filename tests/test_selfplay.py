@@ -576,3 +576,23 @@ def test_expectimax_leaf_uses_fast_terminal_check(monkeypatch):
         [16, 2, 4, 8],
     ], dtype=np.uint32)
     assert agent._best_player(terminal, 0) == -2.0
+
+
+def test_spawn_value_kernel_handles_non_power_tiles_like_vectorized_evaluator():
+    evaluator = NTupleValue(seed=191)
+    rng = np.random.default_rng(192)
+    evaluator.weights[:] = rng.normal(0.0, 0.01, evaluator.weights.shape).astype(np.float32)
+    for _ in range(8):
+        board = rng.choice(
+            [0, 2, 3, 4, 6, 8, 12, 16, 24, 32, 64, 128, 256, 512, 1024, 2048, 65536],
+            size=(4, 4),
+        ).astype(np.uint32)
+        board.flat[rng.integers(16)] = 0
+        empty = np.flatnonzero(board.reshape(-1) == 0)
+        expected = 0.0
+        for cell in empty:
+            for tile, probability in ((2, 0.9), (4, 0.1)):
+                child = board.copy()
+                child.flat[cell] = tile
+                expected += probability * evaluator.value(child) / len(empty)
+        assert evaluator.expected_spawn_value(board) == pytest.approx(expected, abs=1e-6)
