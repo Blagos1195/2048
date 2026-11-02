@@ -51,7 +51,7 @@ jobs:
           for depth in (1, 2):
               rows = []
               started = time.perf_counter()
-              for seed in range(700100, 700005):
+              for seed in range(700100, 700105):
                   agent = ExpectimaxAgent(evaluator, depth=depth, seed=seed)
                   rows.append(play_game(agent, seed, train=False))
               elapsed = time.perf_counter() - started
