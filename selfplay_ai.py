@@ -21,7 +21,14 @@ except ImportError:
 from pathlib import Path
 
 import numpy as np
-from numba import njit
+
+try:
+    from numba import njit
+except ImportError:
+    def njit(*args, **kwargs):
+        def decorate(function):
+            return function
+        return decorate
 
 ACTIONS = (0, 1, 2, 3)
 ACTION_NAMES = ("LEFT", "DOWN", "RIGHT", "UP")
