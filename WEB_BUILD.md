@@ -40,6 +40,7 @@ Keep the checkpoint format compatible with `NTupleValue.load()`. The browser sta
 - The visible page is presented as a standard 2048 game. Three tiny status markers at the lower-right provide discreet controls on desktop and mobile: left toggles automated control, middle makes one prepared move, and right toggles automatic play. Tap the title three times (or press D on desktop) to open the search-depth setting. F8/backtick toggles automated control, F7 toggles automatic play, and Space makes one move when automated control is enabled.
 - The browser uses the same Python game logic and NumPy model format.
 - Desktop-only multiprocessing imports are optional so the game module can be imported in WebAssembly.
+- Numba is optional in the browser runtime. When it is unavailable, the engine uses its Python fallback for board transitions and evaluation.
 - Test model loading and gameplay in current Chrome/Edge and Firefox before treating it as a finished release.
 
 
