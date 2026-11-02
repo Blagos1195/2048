@@ -173,27 +173,27 @@ def _apply_action_kernel(board, action, line_indices, transition_boards, transit
     changed = False
 
     for line in range(4):
-        values = np.empty(4, dtype=np.uint32)
-        exponents = np.empty(4, dtype=np.int64)
+        v0 = flat[line_indices[action, line, 0]]
+        v1 = flat[line_indices[action, line, 1]]
+        v2 = flat[line_indices[action, line, 2]]
+        v3 = flat[line_indices[action, line, 3]]
+        values = (v0, v1, v2, v3)
         standard = True
         key = 0
 
         for position in range(4):
-            value = flat[line_indices[action, line, position]]
-            values[position] = value
+            value = values[position]
             exponent = 0
             remaining = int(value)
             if remaining == 0:
-                exponents[position] = 0
+                pass
             elif remaining > 32768 or (remaining & (remaining - 1)) != 0:
                 standard = False
-                exponents[position] = 0
             else:
                 while remaining > 1:
                     remaining >>= 1
                     exponent += 1
-                exponents[position] = exponent
-            key = key * 16 + exponents[position]
+            key = key * 16 + exponent
 
         if standard:
             moved = transition_boards[key]
@@ -202,8 +202,9 @@ def _apply_action_kernel(board, action, line_indices, transition_boards, transit
             compact = np.empty(4, dtype=np.uint32)
             count = 0
             for position in range(4):
-                if values[position] != 0:
-                    compact[count] = values[position]
+                value = values[position]
+                if value != 0:
+                    compact[count] = value
                     count += 1
             moved = np.zeros(4, dtype=np.uint32)
             source = 0
@@ -221,12 +222,12 @@ def _apply_action_kernel(board, action, line_indices, transition_boards, transit
 
         for position in range(4):
             index = line_indices[action, line, position]
-            out_flat[index] = moved[position]
-            if moved[position] != values[position]:
+            moved_value = moved[position]
+            out_flat[index] = moved_value
+            if moved_value != values[position]:
                 changed = True
 
     return out, gained, changed
-
 
 def _action_line(board: np.ndarray, action: int, line: int) -> tuple[tuple[tuple[int, int], ...], tuple[int, int, int, int]]:
     cells = _ACTION_LINES[action][line]
