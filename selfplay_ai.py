@@ -161,26 +161,38 @@ def _apply_action(board: np.ndarray, action: int) -> tuple[np.ndarray, int, bool
     out = np.empty((4, 4), dtype=np.uint32)
     out_flat = out.reshape(-1)
     lines = _ACTION_LINE_INDICES[action]
+    slide = _slide_row
     gained = 0
     changed = False
-    for i0, i1, i2, i3 in lines:
-        v0 = int(flat[i0])
-        v1 = int(flat[i1])
-        v2 = int(flat[i2])
-        v3 = int(flat[i3])
-        values = (v0, v1, v2, v3)
-        if (v0 == 0 or (v0 & (v0 - 1) == 0 and v0 <= 32768)) and (v1 == 0 or (v1 & (v1 - 1) == 0 and v1 <= 32768)) and (v2 == 0 or (v2 & (v2 - 1) == 0 and v2 <= 32768)) and (v3 == 0 or (v3 & (v3 - 1) == 0 and v3 <= 32768)):
-            e0 = v0.bit_length() - 1 if v0 else 0
-            e1 = v1.bit_length() - 1 if v1 else 0
-            e2 = v2.bit_length() - 1 if v2 else 0
-            e3 = v3.bit_length() - 1 if v3 else 0
-            key = ((e0 * 16 + e1) * 16 + e2) * 16 + e3
-            moved, score = _ROW_TRANSITIONS[key]
-        else:
-            moved, score = _slide_row(values)
-        gained += score
-        changed |= moved != values
-        out_flat[i0], out_flat[i1], out_flat[i2], out_flat[i3] = moved
+
+    i0, i1, i2, i3 = lines[0]
+    values = (int(flat[i0]), int(flat[i1]), int(flat[i2]), int(flat[i3]))
+    moved, score = slide(values)
+    gained += score
+    changed |= moved != values
+    out_flat[i0], out_flat[i1], out_flat[i2], out_flat[i3] = moved
+
+    i0, i1, i2, i3 = lines[1]
+    values = (int(flat[i0]), int(flat[i1]), int(flat[i2]), int(flat[i3]))
+    moved, score = slide(values)
+    gained += score
+    changed |= moved != values
+    out_flat[i0], out_flat[i1], out_flat[i2], out_flat[i3] = moved
+
+    i0, i1, i2, i3 = lines[2]
+    values = (int(flat[i0]), int(flat[i1]), int(flat[i2]), int(flat[i3]))
+    moved, score = slide(values)
+    gained += score
+    changed |= moved != values
+    out_flat[i0], out_flat[i1], out_flat[i2], out_flat[i3] = moved
+
+    i0, i1, i2, i3 = lines[3]
+    values = (int(flat[i0]), int(flat[i1]), int(flat[i2]), int(flat[i3]))
+    moved, score = slide(values)
+    gained += score
+    changed |= moved != values
+    out_flat[i0], out_flat[i1], out_flat[i2], out_flat[i3] = moved
+
     return out, gained, changed
 
 
