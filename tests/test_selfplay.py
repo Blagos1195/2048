@@ -227,7 +227,7 @@ def test_training_evaluation_defaults_compare_four_depths():
     from selfplay_ai import build_parser
 
     args = build_parser().parse_args(["train", "--games", "1"])
-    assert args.depth == 1
+    assert args.depth == 2
     assert args.eval_every == 1000
     assert args.eval_games == 50
     assert args.eval_depths == [1, 2, 3, 4]
