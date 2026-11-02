@@ -95,6 +95,13 @@ def _build_row_transitions() -> tuple[tuple[tuple[int, int, int, int], int], ...
 
 _ROW_TRANSITIONS = _build_row_transitions()
 
+_ROW_TRANSITION_BOARDS = np.asarray(
+    [transition[0] for transition in _ROW_TRANSITIONS], dtype=np.uint32,
+)
+_ROW_TRANSITION_SCORES = np.asarray(
+    [transition[1] for transition in _ROW_TRANSITIONS], dtype=np.uint32,
+)
+
 
 @lru_cache(maxsize=65536)
 def _slide_row(values: tuple[int, int, int, int]) -> tuple[tuple[int, int, int, int], int]:
@@ -154,6 +161,72 @@ _ACTION_LINE_INDICES = tuple(
     for action_lines in _ACTION_LINES
 )
 
+_ACTION_LINE_INDICES_ARRAY = np.asarray(_ACTION_LINE_INDICES, dtype=np.intp)
+
+
+@njit(cache=True)
+def _apply_action_kernel(board, action, line_indices, transition_boards, transition_scores):
+    flat = board.reshape(16)
+    out = np.empty((4, 4), dtype=np.uint32)
+    out_flat = out.reshape(16)
+    gained = 0
+    changed = False
+
+    for line in range(4):
+        values = np.empty(4, dtype=np.uint32)
+        exponents = np.empty(4, dtype=np.int64)
+        standard = True
+        key = 0
+
+        for position in range(4):
+            value = flat[line_indices[action, line, position]]
+            values[position] = value
+            exponent = 0
+            remaining = int(value)
+            if remaining == 0:
+                exponents[position] = 0
+            elif remaining > 32768 or (remaining & (remaining - 1)) != 0:
+                standard = False
+                exponents[position] = 0
+            else:
+                while remaining > 1:
+                    remaining >>= 1
+                    exponent += 1
+                exponents[position] = exponent
+            key = key * 16 + exponents[position]
+
+        if standard:
+            moved = transition_boards[key]
+            gained += int(transition_scores[key])
+        else:
+            compact = np.empty(4, dtype=np.uint32)
+            count = 0
+            for position in range(4):
+                if values[position] != 0:
+                    compact[count] = values[position]
+                    count += 1
+            moved = np.zeros(4, dtype=np.uint32)
+            source = 0
+            target = 0
+            while source < count:
+                if source + 1 < count and compact[source] == compact[source + 1]:
+                    merged = compact[source] * 2
+                    moved[target] = merged
+                    gained += int(merged)
+                    source += 2
+                else:
+                    moved[target] = compact[source]
+                    source += 1
+                target += 1
+
+        for position in range(4):
+            index = line_indices[action, line, position]
+            out_flat[index] = moved[position]
+            if moved[position] != values[position]:
+                changed = True
+
+    return out, gained, changed
+
 
 def _action_line(board: np.ndarray, action: int, line: int) -> tuple[tuple[tuple[int, int], ...], tuple[int, int, int, int]]:
     cells = _ACTION_LINES[action][line]
@@ -165,20 +238,11 @@ def _action_line(board: np.ndarray, action: int, line: int) -> tuple[tuple[tuple
 def _apply_action(board: np.ndarray, action: int) -> tuple[np.ndarray, int, bool]:
     if action not in ACTIONS:
         raise ValueError("action must be 0=left, 1=down, 2=right, or 3=up")
-    board = np.asarray(board)
-    flat = board.reshape(-1)
-    out = np.empty((4, 4), dtype=np.uint32)
-    out_flat = out.reshape(-1)
-    gained = 0
-    changed = False
-    for line in range(4):
-        i0, i1, i2, i3 = _ACTION_LINE_INDICES[action][line]
-        values = (int(flat[i0]), int(flat[i1]), int(flat[i2]), int(flat[i3]))
-        moved, score = _slide_row(values)
-        gained += score
-        changed |= moved != values
-        out_flat[i0], out_flat[i1], out_flat[i2], out_flat[i3] = moved
-    return out, gained, changed
+    board = np.asarray(board, dtype=np.uint32)
+    return _apply_action_kernel(
+        board, action, _ACTION_LINE_INDICES_ARRAY,
+        _ROW_TRANSITION_BOARDS, _ROW_TRANSITION_SCORES,
+    )
 
 
 def apply_action(board: np.ndarray, action: int) -> tuple[np.ndarray, int]:
