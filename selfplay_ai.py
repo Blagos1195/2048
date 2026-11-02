@@ -341,9 +341,16 @@ def pattern_indices(board: np.ndarray) -> np.ndarray:
 
 
 @njit(cache=True)
-def _expected_spawn_value_kernel(exponents, weights, pattern_cells, place_values,
-                                weight_offsets, patterns, positions, increments,
-                                empty_count):
+def _expected_spawn_value_kernel(board, exponent_lookup, weights, pattern_cells,
+                                place_values, weight_offsets, patterns, positions,
+                                increments, empty_count):
+    exponents = np.empty(16, dtype=np.uint8)
+    for cell in range(16):
+        value = np.int64(board[cell])
+        if value > 32768:
+            value = np.int64(32768)
+        exponents[cell] = exponent_lookup[value]
+
     indices = np.empty(pattern_cells.shape[0], dtype=np.int32)
     base_value = 0.0
     for pattern in range(pattern_cells.shape[0]):
@@ -388,7 +395,8 @@ class NTupleValue:
             return self.value(board)
         patterns, positions = _empty_pattern_memberships(empty_mask)
         return float(_expected_spawn_value_kernel(
-            exponent_board(board).reshape(-1),
+            flat,
+            _TILE_EXPONENT_LOOKUP,
             self.weights.reshape(-1),
             _PATTERN_CELLS,
             _PATTERN_PLACE_VALUES,
