@@ -131,12 +131,16 @@ def without_numba(name, *args, **kwargs):
 
 builtins.__import__ = without_numba
 import numpy as np
-from selfplay_ai import NTupleValue
+from selfplay_ai import NTupleValue, apply_action
 
 evaluator = NTupleValue()
 board = np.zeros((4, 4), dtype=np.uint32)
 board[0, 0] = 2
+board[0, 1] = 2
 assert np.isfinite(evaluator.expected_spawn_value(board))
+moved, score = apply_action(board, 0)
+assert moved[0, 0] == 4
+assert score == 4
 """
     subprocess.run([sys.executable, "-c", script], check=True, capture_output=True, text=True)
 
