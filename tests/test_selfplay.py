@@ -116,6 +116,31 @@ def test_expected_spawn_value_matches_reference_on_random_boards():
 
 
 
+def test_engine_imports_and_evaluates_without_numba():
+    import subprocess
+    import sys
+
+    script = """
+import builtins
+
+original_import = builtins.__import__
+def without_numba(name, *args, **kwargs):
+    if name == "numba" or name.startswith("numba."):
+        raise ModuleNotFoundError("No module named 'numba'")
+    return original_import(name, *args, **kwargs)
+
+builtins.__import__ = without_numba
+import numpy as np
+from selfplay_ai import NTupleValue
+
+evaluator = NTupleValue()
+board = np.zeros((4, 4), dtype=np.uint32)
+board[0, 0] = 2
+assert np.isfinite(evaluator.expected_spawn_value(board))
+"""
+    subprocess.run([sys.executable, "-c", script], check=True, capture_output=True, text=True)
+
+
 def test_expectimax_cache_reuses_identical_chance_states():
     evaluator = NTupleValue(seed=11)
     agent = ExpectimaxAgent(evaluator, depth=1, seed=11)
