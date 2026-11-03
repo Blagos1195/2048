@@ -472,6 +472,8 @@ class ExpectimaxAgent:
         seed: int = 1,
         epsilon: float = 0.0,
         cache_size: int = 50000,
+        late_epsilon: float = 0.0,
+        late_tile_threshold: int = 1024,
     ):
         if depth < 1:
             raise ValueError("depth must be at least 1")
@@ -481,6 +483,8 @@ class ExpectimaxAgent:
         self.depth = int(depth)
         self.rng = random.Random(seed)
         self.epsilon = float(epsilon)
+        self.late_epsilon = float(late_epsilon)
+        self.late_tile_threshold = int(late_tile_threshold)
         self.nodes = 0
         self.cache_size = int(cache_size)
 
@@ -512,7 +516,8 @@ class ExpectimaxAgent:
             cache.popitem(last=False)
 
     def choose_action(self, board: np.ndarray) -> int:
-        if self.rng.random() < self.epsilon:
+        exploration_rate = self.late_epsilon if int(np.max(board)) >= self.late_tile_threshold else self.epsilon
+        if self.rng.random() < exploration_rate:
             actions = legal_actions(board)
             if not actions:
                 raise ValueError("No legal actions available")
@@ -718,11 +723,14 @@ def _init_parallel_worker(shm_name: str, shape: tuple[int, ...], alpha: float, g
     _WORKER_EVALUATOR = evaluator
     _WORKER_DEPTH = int(depth)
 
-def _collect_episode(task: tuple[int, float]) -> dict:
+def _collect_episode(task: tuple[int, float, float, int]) -> dict:
     """Generate one game against the current shared snapshot; learner updates happen in the parent."""
-    seed, epsilon = task
+    seed, epsilon, late_epsilon, late_tile_threshold = task
     game = Game2048(seed)
-    agent = ExpectimaxAgent(_WORKER_EVALUATOR, depth=_WORKER_DEPTH, seed=seed, epsilon=epsilon)
+    agent = ExpectimaxAgent(
+        _WORKER_EVALUATOR, depth=_WORKER_DEPTH, seed=seed, epsilon=epsilon,
+        late_epsilon=late_epsilon, late_tile_threshold=late_tile_threshold,
+    )
     transitions = []
     while can_move(game.board) and game.moves < 10000:
         state = game.board.copy()
@@ -857,10 +865,16 @@ def train(args: argparse.Namespace) -> None:
                         if scheduled_epsilon is not None
                         else max(args.min_epsilon, args.epsilon * (args.epsilon_decay ** (absolute_episode - 1)))
                     )
-                    tasks.append((args.seed + absolute_episode, epsilon))
+                    tasks.append((
+                        args.seed + absolute_episode, epsilon,
+                        args.late_epsilon, args.late_tile_threshold,
+                    ))
 
                 if pool is None:
-                    collected = _collect_episode_local(evaluator, tasks[0][0], tasks[0][1], args.depth)
+                    collected = _collect_episode_local(
+                        evaluator, tasks[0][0], tasks[0][1], args.depth,
+                        args.late_epsilon, args.late_tile_threshold,
+                    )
                     result = {k: v for k, v in collected.items() if k != "transitions"}
                     result["td_abs_mean"] = _apply_collected_episode(evaluator, collected["transitions"])
                     batch = [result]
@@ -947,10 +961,16 @@ def train(args: argparse.Namespace) -> None:
                 shm.close()
                 shm.unlink()
 
-def _collect_episode_local(evaluator: NTupleValue, seed: int, epsilon: float, depth: int) -> dict:
+def _collect_episode_local(
+    evaluator: NTupleValue, seed: int, epsilon: float, depth: int,
+    late_epsilon: float = 0.0, late_tile_threshold: int = 1024,
+) -> dict:
     """Single-process version of the same transition collection path."""
     game = Game2048(seed)
-    agent = ExpectimaxAgent(evaluator, depth=depth, seed=seed, epsilon=epsilon)
+    agent = ExpectimaxAgent(
+        evaluator, depth=depth, seed=seed, epsilon=epsilon,
+        late_epsilon=late_epsilon, late_tile_threshold=late_tile_threshold,
+    )
     transitions = []
     while can_move(game.board) and game.moves < 10000:
         state = game.board.copy()
@@ -1068,6 +1088,10 @@ depth 2 can play better but takes considerably longer.""",
                    help="multiplier applied to exploration after each game; closer to 1 decays slower")
     t.add_argument("--epsilon-decay-hours", type=float, default=None,
                    help="decay exploration exponentially from epsilon to min-epsilon over this many hours")
+    t.add_argument("--late-epsilon", type=float, default=0.0,
+                   help="exploration probability used once the board reaches the late-game tile threshold")
+    t.add_argument("--late-tile-threshold", type=int, default=1024,
+                   help="largest tile value at which late-game exploration starts")
     t.add_argument("--eval-every", type=int, default=1000,
                    help="run evaluation every this many training games; 0 disables periodic evaluation")
     t.add_argument("--eval-games", type=int, default=50,
@@ -1147,6 +1171,10 @@ def main() -> None:
         raise SystemExit("--epsilon-decay-hours must be > 0")
     if args.command == "train" and args.epsilon_decay_hours is not None and args.epsilon <= args.min_epsilon:
         raise SystemExit("--epsilon must be greater than --min-epsilon for timed decay")
+    if args.command == "train" and not 0.0 <= args.late_epsilon <= 1.0:
+        raise SystemExit("--late-epsilon must be between 0 and 1")
+    if args.command == "train" and args.late_tile_threshold < 2:
+        raise SystemExit("--late-tile-threshold must be >= 2")
     if args.command == "train" and args.eval_every < 0:
         raise SystemExit("--eval-every must be >= 0")
     if args.command == "train" and args.extended_eval_every < 0:
