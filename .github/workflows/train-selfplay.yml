@@ -1,9 +1,6 @@
-name: Slow-epsilon self-play training
+name: Adaptive exploration self-play training
 
 on:
-  push:
-    paths:
-      - ".github/workflows/train-selfplay.yml"
   workflow_dispatch:
 
 permissions:
@@ -30,37 +27,6 @@ jobs:
           run-id: 41682288002
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: models/adaptive-exploration
-      - name: Download benchmark checkpoints
-        uses: actions/download-artifact@v4
-        with:
-          name: overnight-ai-training
-          run-id: 41543278670
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          path: benchmarks/original
-      - name: Download previous slow-epsilon checkpoint
-        uses: actions/download-artifact@v4
-        with:
-          name: slow-epsilon-max-length-training
-          run-id: 41619096347
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          path: benchmarks/pre-today
-      - name: Download current pre-training checkpoint
-        uses: actions/download-artifact@v4
-        with:
-          name: slow-epsilon-max-length-training
-          run-id: 41682288002
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          path: benchmarks/current
-      - name: Benchmark all models on identical seeds
-        run: |
-          find benchmarks -name best.npz -o -name latest.npz
-                    original_model="$(find benchmarks/original -name best.npz -print -quit)"
-          previous_model="$(find benchmarks/pre-today -name best.npz -print -quit)"
-          current_model="$(find benchmarks/current -name best.npz -print -quit)"
-          test -n "$original_model" && test -n "$previous_model" && test -n "$current_model"
-          python main.py benchmark --model "$original_model" --games 200 --depths 1 2 --seed 6000000 --output benchmarks/original-results.csv
-          python main.py benchmark --model "$previous_model" --games 200 --depths 1 2 --seed 6000000 --output benchmarks/pre-today-results.csv
-          python main.py benchmark --model "$current_model" --games 200 --depths 1 2 --seed 6000000 --output benchmarks/current-results.csv
       - name: Continue training for 5 hours 45 minutes
         shell: bash
         run: |
