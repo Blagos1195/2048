@@ -845,9 +845,18 @@ def train(args: argparse.Namespace) -> None:
                     batch_size = min(batch_size, min(next_boundaries) - completed_absolute)
                 batch_size = min(batch_size, args.games - episode)
                 tasks = []
+                elapsed_fraction = min((time.time() - started) / (args.epsilon_decay_hours * 3600), 1.0) if args.epsilon_decay_hours else 0.0
+                scheduled_epsilon = (
+                    args.epsilon * ((args.min_epsilon / args.epsilon) ** elapsed_fraction)
+                    if args.epsilon_decay_hours else None
+                )
                 for offset in range(1, batch_size + 1):
                     absolute_episode = episode_base + episode + offset
-                    epsilon = max(args.min_epsilon, args.epsilon * (args.epsilon_decay ** (absolute_episode - 1)))
+                    epsilon = (
+                        max(args.min_epsilon, scheduled_epsilon)
+                        if scheduled_epsilon is not None
+                        else max(args.min_epsilon, args.epsilon * (args.epsilon_decay ** (absolute_episode - 1)))
+                    )
                     tasks.append((args.seed + absolute_episode, epsilon))
 
                 if pool is None:
@@ -865,7 +874,12 @@ def train(args: argparse.Namespace) -> None:
                 for result in batch:
                     episode += 1
                     absolute_episode = episode_base + episode
-                    epsilon = max(args.min_epsilon, args.epsilon * (args.epsilon_decay ** (absolute_episode - 1)))
+                    elapsed_fraction = min((time.time() - started) / (args.epsilon_decay_hours * 3600), 1.0) if args.epsilon_decay_hours else 0.0
+                    epsilon = (
+                        max(args.min_epsilon, args.epsilon * ((args.min_epsilon / args.epsilon) ** elapsed_fraction))
+                        if args.epsilon_decay_hours
+                        else max(args.min_epsilon, args.epsilon * (args.epsilon_decay ** (absolute_episode - 1)))
+                    )
                     writer.writerow({"episode": absolute_episode, "score": result["score"], "max_tile": result["max_tile"],
                                      "moves": result["moves"], "epsilon": epsilon,
                                      "td_abs_mean": result["td_abs_mean"], "updates": evaluator.updates})
@@ -1052,6 +1066,8 @@ depth 2 can play better but takes considerably longer.""",
                    help="lowest exploration chance after epsilon decays")
     t.add_argument("--epsilon-decay", type=float, default=0.99995,
                    help="multiplier applied to exploration after each game; closer to 1 decays slower")
+    t.add_argument("--epsilon-decay-hours", type=float, default=None,
+                   help="decay exploration exponentially from epsilon to min-epsilon over this many hours")
     t.add_argument("--eval-every", type=int, default=1000,
                    help="run evaluation every this many training games; 0 disables periodic evaluation")
     t.add_argument("--eval-games", type=int, default=50,
@@ -1127,6 +1143,10 @@ def main() -> None:
         raise SystemExit("evaluation depths must be >= 1")
     if args.command == "train" and args.eval_games < 1:
         raise SystemExit("--eval-games must be >= 1")
+    if args.command == "train" and args.epsilon_decay_hours is not None and args.epsilon_decay_hours <= 0:
+        raise SystemExit("--epsilon-decay-hours must be > 0")
+    if args.command == "train" and args.epsilon_decay_hours is not None and args.epsilon <= args.min_epsilon:
+        raise SystemExit("--epsilon must be greater than --min-epsilon for timed decay")
     if args.command == "train" and args.eval_every < 0:
         raise SystemExit("--eval-every must be >= 0")
     if args.command == "train" and args.extended_eval_every < 0:
