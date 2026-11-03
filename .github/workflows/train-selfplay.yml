@@ -54,9 +54,13 @@ jobs:
       - name: Benchmark all models on identical seeds
         run: |
           find benchmarks -name best.npz -o -name latest.npz
-          python main.py benchmark --model benchmarks/original/models/best.npz --games 200 --depths 1 2 --seed 6000000 --output benchmarks/original-results.csv
-          python main.py benchmark --model benchmarks/pre-today/models/adaptive-exploration/best.npz --games 200 --depths 1 2 --seed 6000000 --output benchmarks/pre-today-results.csv
-          python main.py benchmark --model benchmarks/current/models/slow-epsilon-max-length/best.npz --games 200 --depths 1 2 --seed 6000000 --output benchmarks/current-results.csv
+                    original_model="$(find benchmarks/original -name best.npz -print -quit)"
+          previous_model="$(find benchmarks/pre-today -name best.npz -print -quit)"
+          current_model="$(find benchmarks/current -name best.npz -print -quit)"
+          test -n "$original_model" && test -n "$previous_model" && test -n "$current_model"
+          python main.py benchmark --model "$original_model" --games 200 --depths 1 2 --seed 6000000 --output benchmarks/original-results.csv
+          python main.py benchmark --model "$previous_model" --games 200 --depths 1 2 --seed 6000000 --output benchmarks/pre-today-results.csv
+          python main.py benchmark --model "$current_model" --games 200 --depths 1 2 --seed 6000000 --output benchmarks/current-results.csv
       - name: Continue training for 5 hours 45 minutes
         shell: bash
         run: |
@@ -78,9 +82,9 @@ jobs:
             --eval-depth 2 \
             --log-every 25 \
             --workers 0 \
-            --resume models/slow-epsilon-max-length/latest.npz \
+            --resume models/adaptive-exploration/latest.npz \
             --resume-metrics \
-            --out models/slow-epsilon-max-length
+            --out models/adaptive-exploration
           status=$?
           if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then
             exit "$status"
@@ -88,9 +92,9 @@ jobs:
       - name: Final evaluation of best checkpoint
         if: always()
         run: |
-          if [ -f models/slow-epsilon-max-length/best.npz ]; then
+          if [ -f models/adaptive-exploration/best.npz ]; then
             python main.py evaluate \
-              --model models/slow-epsilon-max-length/best.npz \
+              --model models/adaptive-exploration/best.npz \
               --games 100 \
               --depth 2 \
               --workers 0
@@ -102,6 +106,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: slow-epsilon-max-length-training
-          path: models/slow-epsilon-max-length/
+          path: models/adaptive-exploration/
           if-no-files-found: warn
           retention-days: 30
