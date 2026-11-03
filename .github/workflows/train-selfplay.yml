@@ -1,6 +1,9 @@
 name: Adaptive exploration self-play training
 
 on:
+  push:
+    paths:
+      - ".github/workflows/train-selfplay.yml"
   workflow_dispatch:
 
 permissions:
