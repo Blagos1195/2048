@@ -27,9 +27,36 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: slow-epsilon-max-length-training
+          run-id: 41682288002
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: models/adaptive-exploration
+      - name: Download benchmark checkpoints
+        uses: actions/download-artifact@v4
+        with:
+          name: overnight-ai-training
+          run-id: 41543278670
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: benchmarks/original
+      - name: Download previous slow-epsilon checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: slow-epsilon-max-length-training
           run-id: 41619096347
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          path: models/slow-epsilon-max-length
+          path: benchmarks/pre-today
+      - name: Download current pre-training checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: slow-epsilon-max-length-training
+          run-id: 41682288002
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: benchmarks/current
+      - name: Benchmark all models on identical seeds
+        run: |
+          find benchmarks -name best.npz -o -name latest.npz
+          python main.py benchmark --model benchmarks/original/models/best.npz --games 200 --depths 1 2 --seed 6000000 --output benchmarks/original-results.csv
+          python main.py benchmark --model benchmarks/pre-today/models/adaptive-exploration/best.npz --games 200 --depths 1 2 --seed 6000000 --output benchmarks/pre-today-results.csv
+          python main.py benchmark --model benchmarks/current/models/slow-epsilon-max-length/best.npz --games 200 --depths 1 2 --seed 6000000 --output benchmarks/current-results.csv
       - name: Continue training for 5 hours 45 minutes
         shell: bash
         run: |
@@ -37,9 +64,11 @@ jobs:
           timeout --signal=INT --kill-after=90s 20700s python main.py train \
             --games 10000000 \
             --depth 2 \
-            --epsilon 0.05 \
-            --min-epsilon 0.02 \
-            --epsilon-decay-hours 5.75 \
+            --epsilon 0.06 \
+            --min-epsilon 0.06 \
+            --epsilon-decay 1.0 \
+            --late-epsilon 0.15 \
+            --late-tile-threshold 1024 \
             --eval-every 1000 \
             --eval-games 50 \
             --eval-depths 1 2 \
