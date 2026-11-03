@@ -26,7 +26,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          timeout --signal=INT --kill-after=90s 5h45m python main.py train \
+          timeout --signal=INT --kill-after=90s 20700s python main.py train \
             --games 10000000 \
             --depth 2 \
             --epsilon 0.20 \
