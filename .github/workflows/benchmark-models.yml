@@ -1,0 +1,73 @@
+name: Matched model benchmarks
+
+on:
+  push:
+    paths:
+      - ".github/workflows/benchmark-models.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Download original model
+        uses: actions/download-artifact@v4
+        with:
+          name: overnight-ai-training
+          run-id: 41543278670
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: benchmarks/original
+      - name: Download previous slow-epsilon model
+        uses: actions/download-artifact@v4
+        with:
+          name: slow-epsilon-max-length-training
+          run-id: 41619096347
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: benchmarks/pre-today
+      - name: Download current pre-training model
+        uses: actions/download-artifact@v4
+        with:
+          name: slow-epsilon-max-length-training
+          run-id: 41682288002
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: benchmarks/current
+      - name: Benchmark all models on identical seeds
+        run: |
+          find_model() {
+            local folder="$1"
+            local model
+            model="$(find "$folder" -name best.npz -print -quit)"
+            if [ -z "$model" ]; then
+              model="$(find "$folder" -name latest.npz -print -quit)"
+            fi
+            test -n "$model"
+            printf '%s' "$model"
+          }
+          original_model="$(find_model benchmarks/original)"
+          previous_model="$(find_model benchmarks/pre-today)"
+          current_model="$(find_model benchmarks/current)"
+          printf 'Original: %s\nPre-today: %s\nCurrent: %s\n' "$original_model" "$previous_model" "$current_model"
+          python main.py benchmark --model "$original_model" --games 200 --depths 1 2 --seed 6000000 --output benchmarks/original-results.csv
+          python main.py benchmark --model "$previous_model" --games 200 --depths 1 2 --seed 6000000 --output benchmarks/pre-today-results.csv
+          python main.py benchmark --model "$current_model" --games 200 --depths 1 2 --seed 6000000 --output benchmarks/current-results.csv
+      - name: Save benchmark results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: matched-model-benchmarks
+          path: benchmarks/
+          if-no-files-found: warn
+          retention-days: 30
