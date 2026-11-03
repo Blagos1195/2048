@@ -1,0 +1,59 @@
+name: Slow-epsilon self-play training
+
+on:
+  push:
+    paths:
+      - ".github/workflows/train-selfplay.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Train from scratch
+        run: |
+          python main.py train \
+            --games 100000 \
+            --depth 2 \
+            --epsilon 0.20 \
+            --min-epsilon 0.05 \
+            --epsilon-decay 0.99999 \
+            --eval-every 1000 \
+            --eval-games 50 \
+            --eval-depths 1 2 3 \
+            --eval-depth 2 \
+            --log-every 25 \
+            --workers 2 \
+            --out models/slow-epsilon-max-length
+      - name: Final evaluation of best checkpoint
+        if: always()
+        run: |
+          if [ -f models/slow-epsilon-max-length/best.npz ]; then
+            python main.py evaluate \
+              --model models/slow-epsilon-max-length/best.npz \
+              --games 200 \
+              --depth 2 \
+              --workers 2
+          else
+            echo "No best checkpoint was produced."
+          fi
+      - name: Save training outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: slow-epsilon-max-length-training
+          path: models/slow-epsilon-max-length/
+          if-no-files-found: warn
+          retention-days: 30
