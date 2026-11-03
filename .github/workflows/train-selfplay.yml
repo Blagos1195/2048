@@ -34,23 +34,23 @@ jobs:
         shell: bash
         run: |
           set +e
-          timeout --signal=INT --kill-after=90s 20700s python main.py train \\
-            --games 10000000 \\
-            --depth 2 \\
-            --epsilon 0.05 \\
-            --min-epsilon 0.02 \\
-            --epsilon-decay-hours 5.75 \\
-            --eval-every 1000 \\
-            --eval-games 50 \\
-            --eval-depths 1 2 \\
-            --extended-eval-every 5000 \\
-            --extended-eval-games 20 \\
-            --extended-eval-depths 3 \\
-            --eval-depth 2 \\
-            --log-every 25 \\
-            --workers 0 \\
-            --resume models/slow-epsilon-max-length/latest.npz \\
-            --resume-metrics \\
+          timeout --signal=INT --kill-after=90s 20700s python main.py train \
+            --games 10000000 \
+            --depth 2 \
+            --epsilon 0.05 \
+            --min-epsilon 0.02 \
+            --epsilon-decay-hours 5.75 \
+            --eval-every 1000 \
+            --eval-games 50 \
+            --eval-depths 1 2 \
+            --extended-eval-every 5000 \
+            --extended-eval-games 20 \
+            --extended-eval-depths 3 \
+            --eval-depth 2 \
+            --log-every 25 \
+            --workers 0 \
+            --resume models/slow-epsilon-max-length/latest.npz \
+            --resume-metrics \
             --out models/slow-epsilon-max-length
           status=$?
           if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then
@@ -60,10 +60,10 @@ jobs:
         if: always()
         run: |
           if [ -f models/slow-epsilon-max-length/best.npz ]; then
-            python main.py evaluate \\
-              --model models/slow-epsilon-max-length/best.npz \\
-              --games 100 \\
-              --depth 2 \\
+            python main.py evaluate \
+              --model models/slow-epsilon-max-length/best.npz \
+              --games 100 \
+              --depth 2 \
               --workers 0
           else
             echo "No best checkpoint was produced."
