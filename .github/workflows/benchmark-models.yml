@@ -30,20 +30,27 @@ jobs:
           run-id: 41543278670
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: benchmarks/original
-      - name: Download previous slow-epsilon model
+      - name: Download slow-epsilon run 20 model
         uses: actions/download-artifact@v4
         with:
           name: slow-epsilon-max-length-training
           run-id: 41619096347
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          path: benchmarks/pre-today
-      - name: Download current pre-training model
+          path: benchmarks/run20
+      - name: Download slow-epsilon run 22 model
         uses: actions/download-artifact@v4
         with:
           name: slow-epsilon-max-length-training
           run-id: 41682288002
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          path: benchmarks/current
+          path: benchmarks/run22
+      - name: Download adaptive-exploration model
+        uses: actions/download-artifact@v4
+        with:
+          name: slow-epsilon-max-length-training
+          run-id: 41737416456
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: benchmarks/adaptive
       - name: Benchmark all models on identical seeds
         run: |
           find_model() {
@@ -57,12 +64,14 @@ jobs:
             printf '%s' "$model"
           }
           original_model="$(find_model benchmarks/original)"
-          previous_model="$(find_model benchmarks/pre-today)"
-          current_model="$(find_model benchmarks/current)"
-          printf 'Original: %s\nPre-today: %s\nCurrent: %s\n' "$original_model" "$previous_model" "$current_model"
+          run20_model="$(find_model benchmarks/run20)"
+          run22_model="$(find_model benchmarks/run22)"
+          adaptive_model="$(find_model benchmarks/adaptive)"
+          printf 'Original: %s\nRun 20: %s\nRun 22: %s\nAdaptive: %s\n' "$original_model" "$run20_model" "$run22_model" "$adaptive_model"
           python main.py benchmark --model "$original_model" --games 200 --depths 1 2 --seed 6000000 --output benchmarks/original-results.csv
-          python main.py benchmark --model "$previous_model" --games 200 --depths 1 2 --seed 6000000 --output benchmarks/pre-today-results.csv
-          python main.py benchmark --model "$current_model" --games 200 --depths 1 2 --seed 6000000 --output benchmarks/current-results.csv
+          python main.py benchmark --model "$run20_model" --games 200 --depths 1 2 --seed 6000000 --output benchmarks/run20-results.csv
+          python main.py benchmark --model "$run22_model" --games 200 --depths 1 2 --seed 6000000 --output benchmarks/run22-results.csv
+          python main.py benchmark --model "$adaptive_model" --games 200 --depths 1 2 --seed 6000000 --output benchmarks/adaptive-results.csv
       - name: Save benchmark results
         if: always()
         uses: actions/upload-artifact@v4
