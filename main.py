@@ -127,7 +127,7 @@ def main() -> None:
     parser.add_argument("--depth", type=int, default=2, help="AI search depth; higher is stronger but slower")
     parser.add_argument("--seed", type=int, default=20261028, help="random seed for repeatable runs")
     parser.add_argument("--out", default="models/selfplay", help="folder for saved training checkpoints")
-    parser.add_argument("--model", default=None, help="checkpoint .npz to load in modes 3 and 4")
+    parser.add_argument("--model", default="models/selfplay/best.npz", help="checkpoint .npz to load in modes 3 and 4")
     args = parser.parse_args()
 
     from selfplay_ui import main as ui_main
