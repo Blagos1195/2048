@@ -706,7 +706,7 @@ def showcase(mode: int, model: str | None, depth: int, seed: int):
 def main():
     parser = argparse.ArgumentParser(description="Self-learning 2048 graphical modes")
     parser.add_argument("--mode", type=int, choices=range(1, 5), required=True)
-    parser.add_argument("--model", default=None, help="Checkpoint .npz; defaults to best then latest")
+    parser.add_argument("--model", default="models/selfplay/best.npz", help="Checkpoint .npz to load in modes 3 and 4")
     parser.add_argument("--games", type=int, default=100000, help="Training episodes for modes 1 and 2")
     parser.add_argument("--depth", type=int, default=1)
     parser.add_argument("--out", default="models/selfplay")
