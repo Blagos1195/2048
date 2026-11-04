@@ -23,27 +23,40 @@ jobs:
           cache-dependency-path: requirements.txt
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
-      - name: Download run 26 checkpoints
+      - name: Download original model
+        uses: actions/download-artifact@v4
+        with:
+          name: overnight-ai-training
+          run-id: 41543278670
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: benchmarks/original
+      - name: Download run 27 checkpoints
         uses: actions/download-artifact@v4
         with:
           name: slow-epsilon-max-length-training
-          run-id: 41796787691
+          run-id: 41866846302
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          path: benchmarks/run26
-      - name: Compare latest and best over 1,000 depth-2 games
+          path: benchmarks/run27
+      - name: Benchmark original, latest and best over 1,000 depth-2 games
         run: |
-          latest_model="$(find benchmarks/run26 -name latest.npz -print -quit)"
-          best_model="$(find benchmarks/run26 -name best.npz -print -quit)"
+          original_model="$(find benchmarks/original -name best.npz -print -quit)"
+          if [ -z "$original_model" ]; then
+            original_model="$(find benchmarks/original -name latest.npz -print -quit)"
+          fi
+          latest_model="$(find benchmarks/run27 -name latest.npz -print -quit)"
+          best_model="$(find benchmarks/run27 -name best.npz -print -quit)"
+          test -n "$original_model"
           test -n "$latest_model"
           test -n "$best_model"
-          printf 'Latest: %s\\nBest: %s\\n' "$latest_model" "$best_model"
-          python main.py benchmark --model "$latest_model" --games 1000 --depths 2 --seed 7000000 --output benchmarks/latest-results.csv
-          python main.py benchmark --model "$best_model" --games 1000 --depths 2 --seed 7000000 --output benchmarks/best-results.csv
+          printf 'Original: %s\\nLatest: %s\\nBest: %s\\n' "$original_model" "$latest_model" "$best_model"
+          python main.py benchmark --model "$original_model" --games 1000 --depths 2 --seed 8000000 --output benchmarks/original-results.csv
+          python main.py benchmark --model "$latest_model" --games 1000 --depths 2 --seed 8000000 --output benchmarks/latest-results.csv
+          python main.py benchmark --model "$best_model" --games 1000 --depths 2 --seed 8000000 --output benchmarks/best-results.csv
       - name: Save benchmark results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: run26-1000-game-checkpoint-comparison
+          name: run27-1000-game-checkpoint-comparison
           path: benchmarks/
           if-no-files-found: warn
           retention-days: 30
