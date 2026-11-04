@@ -30,53 +30,33 @@ jobs:
           run-id: 41543278670
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: benchmarks/original
-      - name: Download slow-epsilon run 20 model
+      - name: Download run 26 checkpoints
         uses: actions/download-artifact@v4
         with:
           name: slow-epsilon-max-length-training
-          run-id: 41619096347
+          run-id: 41796787691
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          path: benchmarks/run20
-      - name: Download slow-epsilon run 22 model
-        uses: actions/download-artifact@v4
-        with:
-          name: slow-epsilon-max-length-training
-          run-id: 41682288002
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          path: benchmarks/run22
-      - name: Download adaptive-exploration model
-        uses: actions/download-artifact@v4
-        with:
-          name: slow-epsilon-max-length-training
-          run-id: 41737416456
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          path: benchmarks/adaptive
-      - name: Benchmark all models on identical seeds
+          path: benchmarks/run26
+      - name: Benchmark original, latest and best on identical seeds
         run: |
-          find_model() {
-            local folder="$1"
-            local model
-            model="$(find "$folder" -name best.npz -print -quit)"
-            if [ -z "$model" ]; then
-              model="$(find "$folder" -name latest.npz -print -quit)"
-            fi
-            test -n "$model"
-            printf '%s' "$model"
-          }
-          original_model="$(find_model benchmarks/original)"
-          run20_model="$(find_model benchmarks/run20)"
-          run22_model="$(find_model benchmarks/run22)"
-          adaptive_model="$(find_model benchmarks/adaptive)"
-          printf 'Original: %s\nRun 20: %s\nRun 22: %s\nAdaptive: %s\n' "$original_model" "$run20_model" "$run22_model" "$adaptive_model"
+          original_model="$(find benchmarks/original -name best.npz -print -quit)"
+          if [ -z "$original_model" ]; then
+            original_model="$(find benchmarks/original -name latest.npz -print -quit)"
+          fi
+          latest_model="$(find benchmarks/run26 -name latest.npz -print -quit)"
+          best_model="$(find benchmarks/run26 -name best.npz -print -quit)"
+          test -n "$original_model"
+          test -n "$latest_model"
+          test -n "$best_model"
+          printf 'Original: %s\nLatest: %s\nBest: %s\n' "$original_model" "$latest_model" "$best_model"
           python main.py benchmark --model "$original_model" --games 200 --depths 1 2 --seed 6000000 --output benchmarks/original-results.csv
-          python main.py benchmark --model "$run20_model" --games 200 --depths 1 2 --seed 6000000 --output benchmarks/run20-results.csv
-          python main.py benchmark --model "$run22_model" --games 200 --depths 1 2 --seed 6000000 --output benchmarks/run22-results.csv
-          python main.py benchmark --model "$adaptive_model" --games 200 --depths 1 2 --seed 6000000 --output benchmarks/adaptive-results.csv
+          python main.py benchmark --model "$latest_model" --games 200 --depths 1 2 --seed 6000000 --output benchmarks/latest-results.csv
+          python main.py benchmark --model "$best_model" --games 200 --depths 1 2 --seed 6000000 --output benchmarks/best-results.csv
       - name: Save benchmark results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: matched-model-benchmarks
+          name: latest-best-original-benchmarks
           path: benchmarks/
           if-no-files-found: warn
           retention-days: 30
