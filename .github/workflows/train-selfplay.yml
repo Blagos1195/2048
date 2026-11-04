@@ -27,7 +27,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: slow-epsilon-max-length-training
-          run-id: 41737416456
+          run-id: 41796787691
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: models/adaptive-exploration
       - name: Continue training for 5 hours 45 minutes
@@ -37,8 +37,8 @@ jobs:
           timeout --signal=INT --kill-after=90s 20700s python main.py train \
             --games 10000000 \
             --depth 2 \
-            --epsilon 0.06 \
-            --min-epsilon 0.06 \
+            --epsilon 0.10 \
+            --min-epsilon 0.10 \
             --epsilon-decay 1.0 \
             --late-epsilon 0.15 \
             --late-tile-threshold 1024 \
