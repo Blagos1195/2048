@@ -770,6 +770,7 @@ def _handle_training_interrupt(signum, frame):
 
 
 def train(args: argparse.Namespace) -> None:
+    signal.signal(signal.SIGTERM, _handle_training_interrupt)
     if hasattr(signal, "SIGBREAK"):
         signal.signal(signal.SIGBREAK, _handle_training_interrupt)
     evaluator = NTupleValue(alpha=args.alpha, gamma=args.gamma, seed=args.seed)
