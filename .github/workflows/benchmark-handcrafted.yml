@@ -1,0 +1,51 @@
+name: Handcrafted model benchmark
+
+on:
+  push:
+    paths:
+      - ".github/workflows/benchmark-handcrafted.yml"
+      - "tools/create_handcrafted_model.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Download current best model
+        uses: actions/download-artifact@v4
+        with:
+          name: slow-epsilon-max-length-training
+          run-id: 41931505280
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: benchmarks/trained
+      - name: Generate handcrafted weights
+        run: |
+          mkdir -p benchmarks
+          python tools/create_handcrafted_model.py
+      - name: Run matched depth-2 benchmarks
+        run: |
+          trained="$(find benchmarks/trained -name best.npz -print -quit)"
+          test -n "$trained"
+          python main.py benchmark --model "$trained" --games 500 --depths 2 --seed 20000000 --output benchmarks/trained-results.csv
+          python main.py benchmark --model benchmarks/handcrafted.npz --games 500 --depths 2 --seed 20000000 --output benchmarks/handcrafted-results.csv
+      - name: Save models and benchmark results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: handcrafted-vs-trained-benchmark
+          path: benchmarks/
+          if-no-files-found: warn
+          retention-days: 30
