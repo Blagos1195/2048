@@ -1,6 +1,9 @@
+import sys
 from pathlib import Path
 
 import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from selfplay_ai import NTupleValue, PATTERNS, PATTERN_COUNT, PATTERN_TABLE_SIZE
 
