@@ -24,7 +24,7 @@ jobs:
           cache-dependency-path: requirements.txt
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
-      - name: Download current best model
+      - name: Download currently published model
         uses: actions/download-artifact@v4
         with:
           name: slow-epsilon-max-length-training
@@ -37,7 +37,7 @@ jobs:
           python tools/create_handcrafted_model.py
       - name: Run matched depth-2 benchmarks
         run: |
-          trained="$(find benchmarks/trained -name best.npz -print -quit)"
+          trained="$(find benchmarks/trained -name latest.npz -print -quit)"
           test -n "$trained"
           python main.py benchmark --model "$trained" --games 500 --depths 2 --seed 20000000 --output benchmarks/trained-results.csv
           python main.py benchmark --model benchmarks/handcrafted.npz --games 500 --depths 2 --seed 20000000 --output benchmarks/handcrafted-results.csv
