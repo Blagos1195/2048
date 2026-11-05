@@ -23,37 +23,37 @@ jobs:
           cache-dependency-path: requirements.txt
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
-      - name: Download run 27 champion
-        uses: actions/download-artifact@v4
-        with:
-          name: slow-epsilon-max-length-training
-          run-id: 41866846302
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          path: benchmarks/run27
-      - name: Download run 28 checkpoints
+      - name: Download published run 28 checkpoint
         uses: actions/download-artifact@v4
         with:
           name: slow-epsilon-max-length-training
           run-id: 41931505280
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: benchmarks/run28
-      - name: Benchmark run 27 best and run 28 checkpoints over 500 depth-2 games
+      - name: Download run 29 checkpoints
+        uses: actions/download-artifact@v4
+        with:
+          name: slow-epsilon-max-length-training
+          run-id: 41992891126
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: benchmarks/run29
+      - name: Benchmark published checkpoint against run 29 best and latest
         run: |
-          run27_best="$(find benchmarks/run27 -name best.npz -print -quit)"
           run28_latest="$(find benchmarks/run28 -name latest.npz -print -quit)"
-          run28_best="$(find benchmarks/run28 -name best.npz -print -quit)"
-          test -n "$run27_best"
+          run29_best="$(find benchmarks/run29 -name best.npz -print -quit)"
+          run29_latest="$(find benchmarks/run29 -name latest.npz -print -quit)"
           test -n "$run28_latest"
-          test -n "$run28_best"
-          printf 'Run 27 best: %s\\nRun 28 latest: %s\\nRun 28 best: %s\\n' "$run27_best" "$run28_latest" "$run28_best"
-          python main.py benchmark --model "$run27_best" --games 500 --depths 2 --seed 9000000 --output benchmarks/run27-best-results.csv
-          python main.py benchmark --model "$run28_latest" --games 500 --depths 2 --seed 9000000 --output benchmarks/run28-latest-results.csv
-          python main.py benchmark --model "$run28_best" --games 500 --depths 2 --seed 9000000 --output benchmarks/run28-best-results.csv
+          test -n "$run29_best"
+          test -n "$run29_latest"
+          printf 'Run 28 published: %s\\nRun 29 best: %s\\nRun 29 latest: %s\\n' "$run28_latest" "$run29_best" "$run29_latest"
+          python main.py benchmark --model "$run28_latest" --games 500 --depths 2 --seed 10000000 --output benchmarks/run28-published-results.csv
+          python main.py benchmark --model "$run29_best" --games 500 --depths 2 --seed 10000000 --output benchmarks/run29-best-results.csv
+          python main.py benchmark --model "$run29_latest" --games 500 --depths 2 --seed 10000000 --output benchmarks/run29-latest-results.csv
       - name: Save benchmark results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: run28-500-game-checkpoint-comparison
+          name: run29-published-checkpoint-comparison
           path: benchmarks/
           if-no-files-found: warn
           retention-days: 30
