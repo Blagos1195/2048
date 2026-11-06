@@ -36,7 +36,6 @@ def update_search_target(evaluator, state, transitions, index, horizon, depth):
     discount = 1.0
     terminal = False
     next_state = None
-    steps = 0
     for offset in range(horizon):
         if index + offset >= len(transitions):
             break
@@ -44,7 +43,6 @@ def update_search_target(evaluator, state, transitions, index, horizon, depth):
         total += discount * reward
         discount *= evaluator.gamma
         next_state = np.frombuffer(next_bytes, dtype=np.uint32).reshape(4, 4)
-        steps += 1
         if terminal:
             break
     if not terminal and next_state is not None:
@@ -159,6 +157,8 @@ def main():
     training_path = out / "training.csv"
     benchmark_path = out / "benchmark.csv"
     episode_base = 0
+    episode = 0
+    completed = False
     try:
         with np.load(latest_path, allow_pickle=False) as checkpoint:
             import ast
@@ -172,7 +172,6 @@ def main():
         print(f"Initial validation quality: {best_quality:.2f}", flush=True)
 
         started = time.monotonic()
-        episode = 0
         last_validation = 0
         last_benchmark = 0
         with training_path.open("w", newline="", encoding="utf-8") as file:
@@ -265,8 +264,9 @@ def main():
             f"best validation quality={best_quality:.2f}",
             flush=True,
         )
+        completed = True
     finally:
-        if "evaluator" in locals():
+        if not completed:
             evaluator.save(latest_path, {"episode": episode_base + episode, "updates": evaluator.updates,
                                          "target_depth": args.target_depth, "interrupted": True})
         pool.shutdown(wait=True, cancel_futures=True)
