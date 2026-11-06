@@ -82,6 +82,7 @@ def quality(report):
 
 
 def benchmark_models(pool, shared_weights, evaluator, models, output, episode):
+    candidate_weights = evaluator.weights.copy()
     fields = [
         "episode", "model", "depth", "games", "avg_score", "median_score",
         "avg_max_tile", "rate_2048", "rate_4096", "rate_8192",
@@ -95,7 +96,7 @@ def benchmark_models(pool, shared_weights, evaluator, models, output, episode):
         for name, weights in models:
             reports = evaluate_model(
                 pool, shared_weights, evaluator, weights,
-                depths=[2, 3], games=20, seed=20_000_000,
+                depths=[2, 3], games=10, seed=20_000_000,
             )
             for report in reports:
                 writer.writerow({"episode": episode, "model": name, **report})
@@ -105,6 +106,7 @@ def benchmark_models(pool, shared_weights, evaluator, models, output, episode):
                     flush=True,
                 )
         file.flush()
+    shared_weights[:] = candidate_weights
 
 
 def main():
@@ -169,6 +171,8 @@ def main():
 
         started = time.monotonic()
         episode = 0
+        last_validation = 0
+        last_benchmark = 0
         with training_path.open("w", newline="", encoding="utf-8") as file:
             writer = csv.DictWriter(file, fieldnames=training_fields)
             writer.writeheader()
@@ -204,7 +208,8 @@ def main():
                         flush=True,
                     )
 
-                if episode % 1000 == 0:
+                if episode // 1000 > last_validation // 1000:
+                    last_validation = episode
                     evaluator.save(latest_path, {
                         "episode": absolute_episode, "updates": evaluator.updates,
                         "target_depth": args.target_depth,
@@ -222,7 +227,8 @@ def main():
                         })
                         print(f"New experiment best at episode {absolute_episode}", flush=True)
 
-                if episode % 5000 == 0:
+                if episode // 5000 > last_benchmark // 5000:
+                    last_benchmark = episode
                     benchmark_models(
                         pool, shared_weights, evaluator,
                         [
@@ -232,7 +238,6 @@ def main():
                         ],
                         benchmark_path, absolute_episode,
                     )
-                    shared_weights[:] = evaluator.weights
 
         evaluator.save(latest_path, {
             "episode": episode_base + episode, "updates": evaluator.updates,
@@ -241,10 +246,12 @@ def main():
             "target_horizon": args.target_horizon,
             "stopped": STOP,
         })
+        experiment_best = ai.NTupleValue()
+        experiment_best.load(best_path)
         benchmark_models(
             pool, shared_weights, evaluator,
             [
-                ("experiment-best", ai.NTupleValue().weights.copy()),
+                ("experiment-best", experiment_best.weights),
                 ("starting-latest", starting.weights),
                 ("published-champion", champion.weights),
                 ("experiment-latest", evaluator.weights.copy()),
@@ -257,6 +264,9 @@ def main():
             flush=True,
         )
     finally:
+        if "evaluator" in locals():
+            evaluator.save(latest_path, {"episode": episode_base + episode, "updates": evaluator.updates,
+                                         "target_depth": args.target_depth, "interrupted": True})
         pool.shutdown(wait=True, cancel_futures=True)
         shared.close()
         shared.unlink()
