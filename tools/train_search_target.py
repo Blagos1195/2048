@@ -85,13 +85,22 @@ def benchmark_models(pool, shared_weights, evaluator, models, output, episode):
     candidate_weights = evaluator.weights.copy()
     fields = [
         "episode", "model", "depth", "games", "avg_score", "median_score",
-        "avg_max_tile", "rate_2048", "rate_4096", "rate_8192",
-        "seconds", "games_per_second",
+        "avg_max_tile", "best_max_tile", "avg_moves", "rate_2048", "rate_4096",
+        "rate_8192", "seconds", "games_per_second",
     ]
-    write_header = not output.exists()
+    existing_rows = []
+    if output.exists() and output.stat().st_size:
+        with output.open("r", newline="", encoding="utf-8") as existing:
+            reader = csv.DictReader(existing)
+            existing_rows = list(reader)
+            if reader.fieldnames != fields:
+                with output.open("w", newline="", encoding="utf-8") as rewritten:
+                    writer = csv.DictWriter(rewritten, fieldnames=fields)
+                    writer.writeheader()
+                    writer.writerows(existing_rows)
     with output.open("a", newline="", encoding="utf-8") as file:
         writer = csv.DictWriter(file, fieldnames=fields)
-        if write_header:
+        if file.tell() == 0:
             writer.writeheader()
         for name, weights in models:
             reports = evaluate_model(
@@ -130,10 +139,16 @@ def main():
     champion_path = out / "published-champion.npz"
     latest_path = out / "latest.npz"
     best_path = out / "best.npz"
-    atomic_copy(Path(args.resume), starting_path)
-    atomic_copy(Path(args.resume), latest_path)
-    atomic_copy(Path(args.resume), best_path)
-    atomic_copy(Path(args.champion), champion_path)
+    if not latest_path.exists():
+        atomic_copy(Path(args.resume), starting_path)
+        atomic_copy(Path(args.resume), latest_path)
+        atomic_copy(Path(args.resume), best_path)
+    if not starting_path.exists():
+        atomic_copy(Path(args.resume), starting_path)
+    if not best_path.exists():
+        atomic_copy(Path(args.resume), best_path)
+    if not champion_path.exists():
+        atomic_copy(Path(args.champion), champion_path)
 
     evaluator = ai.NTupleValue()
     evaluator.load(latest_path)
@@ -141,6 +156,8 @@ def main():
     starting.load(starting_path)
     champion = ai.NTupleValue()
     champion.load(champion_path)
+    experiment_best = ai.NTupleValue()
+    experiment_best.load(best_path)
 
     workers = args.workers or (os.cpu_count() or 1)
     workers = max(1, workers)
@@ -168,15 +185,26 @@ def main():
         initial = ai.evaluate_depths(
             evaluator, games=50, depths=[2], seed_start=1_000_000, pool=pool
         )[0]
-        best_quality = quality(initial)
-        print(f"Initial validation quality: {best_quality:.2f}", flush=True)
+        if np.array_equal(evaluator.weights, experiment_best.weights):
+            best_quality = quality(initial)
+        else:
+            best_validation = ai.evaluate_depths(
+                experiment_best, games=50, depths=[2], seed_start=1_000_000, pool=pool
+            )[0]
+            best_quality = quality(best_validation)
+        print(
+            f"Initial latest quality: {quality(initial):.2f}; "
+            f"retained best quality: {best_quality:.2f}",
+            flush=True,
+        )
 
         started = time.monotonic()
         last_validation = 0
         last_benchmark = 0
-        with training_path.open("w", newline="", encoding="utf-8") as file:
+        with training_path.open("a", newline="", encoding="utf-8") as file:
             writer = csv.DictWriter(file, fieldnames=training_fields)
-            writer.writeheader()
+            if file.tell() == 0:
+                writer.writeheader()
             while time.monotonic() - started < args.hours * 3600 and not STOP:
                 batch_size = workers * 2
                 tasks = [
@@ -247,7 +275,6 @@ def main():
             "target_horizon": args.target_horizon,
             "stopped": STOP,
         })
-        experiment_best = ai.NTupleValue()
         experiment_best.load(best_path)
         benchmark_models(
             pool, shared_weights, evaluator,
