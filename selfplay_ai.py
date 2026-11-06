@@ -445,8 +445,13 @@ class NTupleValue:
     def save(self, path: str | Path, metadata: dict | None = None) -> None:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        np.savez_compressed(path, weights=self.weights, alpha=self.alpha, gamma=self.gamma,
-                            updates=self.updates, metadata=np.array(str(metadata or {})))
+        temporary_path = path.with_name(path.name + ".tmp")
+        with temporary_path.open("wb") as checkpoint:
+            np.savez_compressed(checkpoint, weights=self.weights, alpha=self.alpha, gamma=self.gamma,
+                                updates=self.updates, metadata=np.array(str(metadata or {})))
+            checkpoint.flush()
+            os.fsync(checkpoint.fileno())
+        os.replace(temporary_path, path)
 
     def load(self, path: str | Path) -> None:
         with np.load(path, allow_pickle=False) as data:
