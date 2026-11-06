@@ -1,0 +1,62 @@
+name: Search-target training experiment
+
+on:
+  push:
+    paths:
+      - ".github/workflows/search-target-training.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Restore latest adaptive checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: slow-epsilon-max-length-training
+          run-id: 42220402869
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: models/adaptive-exploration
+      - name: Validate inputs and trainer
+        run: |
+          test -s models/adaptive-exploration/latest.npz
+          test -s models/selfplay/best.npz
+          python -m py_compile selfplay_ai.py tools/train_search_target.py
+      - name: Train, evaluate and benchmark for 5 hours 45 minutes
+        shell: bash
+        run: |
+          set +e
+          timeout --signal=INT --kill-after=90s 20700s python tools/train_search_target.py \
+            --resume models/adaptive-exploration/latest.npz \
+            --champion models/selfplay/best.npz \
+            --out models/search-target \
+            --hours 5.75 \
+            --workers 0 \
+            --target-depth 3 \
+            --target-horizon 3 \
+            --target-interval 32
+          status=$?
+          if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then
+            exit "$status"
+          fi
+      - name: Save experiment outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: search-target-training
+          path: models/search-target/
+          if-no-files-found: warn
+          retention-days: 30
