@@ -27,25 +27,53 @@ jobs:
           cache-dependency-path: requirements.txt
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
-      - name: Restore latest adaptive checkpoint
+      - name: Find previous experiment artifact
+        id: previous
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runs = await github.rest.actions.listWorkflowRuns({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: "search-target-training.yml",
+              branch: "main",
+              status: "completed",
+              per_page: 20
+            });
+            for (const run of runs.data.workflow_runs) {
+              if (run.id === context.runId) continue;
+              const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                run_id: run.id
+              });
+              if (artifacts.data.artifacts.some(a => a.name === "search-target-training" && !a.expired)) {
+                core.setOutput("run-id", String(run.id));
+                return;
+              }
+            }
+            core.setFailed("No previous search-target-training artifact was found.");
+      - name: Restore experiment checkpoint and history
         uses: actions/download-artifact@v4
         with:
-          name: slow-epsilon-max-length-training
-          run-id: 42220402869
+          name: search-target-training
+          run-id: ${{ steps.previous.outputs.run-id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          path: models/adaptive-exploration
+          path: models/search-target
       - name: Validate inputs and trainer
         run: |
-          test -s models/adaptive-exploration/latest.npz
-          test -s models/selfplay/best.npz
+          test -s models/search-target/latest.npz
+          test -s models/search-target/best.npz
+          test -s models/search-target/starting.npz
+          test -s models/search-target/published-champion.npz
           python -m py_compile selfplay_ai.py tools/train_search_target.py
       - name: Train, evaluate and benchmark for 5 hours 45 minutes
         shell: bash
         run: |
           set +e
           timeout --signal=INT --kill-after=90s 20700s python tools/train_search_target.py \
-            --resume models/adaptive-exploration/latest.npz \
-            --champion models/selfplay/best.npz \
+            --resume models/search-target/latest.npz \
+            --champion models/search-target/published-champion.npz \
             --out models/search-target \
             --hours 5.75 \
             --workers 0 \
