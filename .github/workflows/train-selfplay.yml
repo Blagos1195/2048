@@ -30,6 +30,49 @@ jobs:
           run-id: 42059379346
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: models/adaptive-exploration
+      - name: Validate and recover checkpoint
+        run: |
+          python - <<'PY'
+          import ast
+          import csv
+          import os
+          import shutil
+          from pathlib import Path
+          import numpy as np
+
+          out = Path("models/adaptive-exploration")
+          latest = out / "latest.npz"
+          best = out / "best.npz"
+
+          def checkpoint_metadata(path):
+              with np.load(path, allow_pickle=False) as data:
+                  data["weights"]
+                  return ast.literal_eval(str(data["metadata"].item()))
+
+          try:
+              checkpoint_metadata(latest)
+              print("Latest checkpoint is valid.")
+          except (OSError, EOFError, ValueError, KeyError, SyntaxError, AttributeError):
+              metadata = checkpoint_metadata(best)
+              episode = int(metadata.get("episode", metadata.get("episodes", 0)))
+              shutil.copy2(best, latest)
+              print(f"Recovered latest checkpoint from best at episode {episode}.")
+
+              for filename in ("training.csv", "evaluation.csv"):
+                  path = out / filename
+                  if not path.exists():
+                      continue
+                  with path.open(newline="", encoding="utf-8") as source:
+                      reader = csv.DictReader(source)
+                      fields = reader.fieldnames
+                      rows = [row for row in reader if int(float(row["episode"])) <= episode]
+                  temporary = path.with_name(path.name + ".tmp")
+                  with temporary.open("w", newline="", encoding="utf-8") as target:
+                      writer = csv.DictWriter(target, fieldnames=fields)
+                      writer.writeheader()
+                      writer.writerows(rows)
+                  os.replace(temporary, path)
+          PY
       - name: Continue training for 5 hours 45 minutes
         shell: bash
         run: |
