@@ -6,6 +6,10 @@ on:
       - ".github/workflows/search-target-training.yml"
   workflow_dispatch:
 
+concurrency:
+  group: search-target-training
+  cancel-in-progress: false
+
 permissions:
   contents: read
   actions: read
