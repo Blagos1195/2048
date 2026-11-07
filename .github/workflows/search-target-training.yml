@@ -60,6 +60,14 @@ jobs:
           run-id: ${{ steps.previous.outputs.run-id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: models/search-target
+      - name: Restart experiment from the last known-good checkpoint once
+        run: |
+          if [ ! -f models/search-target/search-target-fix-v1 ]; then
+            cp models/search-target/starting.npz models/search-target/latest.npz
+            cp models/search-target/starting.npz models/search-target/best.npz
+            rm -f models/search-target/training.csv models/search-target/benchmark.csv
+            touch models/search-target/search-target-fix-v1
+          fi
       - name: Validate inputs and trainer
         run: |
           test -s models/search-target/latest.npz
@@ -67,15 +75,15 @@ jobs:
           test -s models/search-target/starting.npz
           test -s models/search-target/published-champion.npz
           python -m py_compile selfplay_ai.py tools/train_search_target.py
-      - name: Train, evaluate and benchmark for 5 hours 45 minutes
+      - name: Train, evaluate and benchmark for 5 hours 15 minutes
         shell: bash
         run: |
           set +e
-          timeout --signal=INT --kill-after=90s 20700s python tools/train_search_target.py \
+          timeout --signal=INT --kill-after=90s 18900s python -u tools/train_search_target.py \
             --resume models/search-target/latest.npz \
             --champion models/search-target/published-champion.npz \
             --out models/search-target \
-            --hours 5.75 \
+            --hours 5.25 \
             --workers 0 \
             --target-depth 3 \
             --target-horizon 3 \
