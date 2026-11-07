@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - ".github/workflows/model-comparison-100.yml"
+      - "tools/compare_models_100.py"
   workflow_dispatch:
 
 permissions:
