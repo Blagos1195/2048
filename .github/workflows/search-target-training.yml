@@ -75,15 +75,15 @@ jobs:
           test -s models/search-target/starting.npz
           test -s models/search-target/published-champion.npz
           python -m py_compile selfplay_ai.py tools/train_search_target.py
-      - name: Train, evaluate and benchmark for 5 hours 15 minutes
+      - name: Train for 5 hours, reserving 30 minutes for final benchmarks
         shell: bash
         run: |
           set +e
-          timeout --signal=INT --kill-after=90s 18900s python -u tools/train_search_target.py \
+          timeout --signal=INT --kill-after=180s 19800s python -u tools/train_search_target.py \
             --resume models/search-target/latest.npz \
             --champion models/search-target/published-champion.npz \
             --out models/search-target \
-            --hours 5.25 \
+            --hours 5.0 \
             --workers 0 \
             --target-depth 3 \
             --target-horizon 3 \
