@@ -618,3 +618,16 @@ def test_spawn_value_kernel_handles_non_power_tiles_like_vectorized_evaluator():
                 child.flat[cell] = tile
                 expected += probability * evaluator.value(child) / len(empty)
         assert evaluator.expected_spawn_value(board) == pytest.approx(expected, abs=1e-6)
+
+def test_expectimax_terminal_board_returns_terminal_value_at_all_depths():
+    evaluator = NTupleValue(seed=197)
+    agent = ExpectimaxAgent(evaluator, depth=3, seed=197)
+    terminal = np.array([
+        [2, 4, 8, 16],
+        [4, 8, 16, 2],
+        [8, 16, 2, 4],
+        [16, 2, 4, 8],
+    ], dtype=np.uint32)
+
+    assert not can_move(terminal)
+    assert agent._best_player(terminal, 3) == -2.0
