@@ -579,7 +579,7 @@ class ExpectimaxAgent:
         cached = self._cache_get(self._player_cache, key)
         if cached is not None:
             return cached
-        if depth <= 0:
+        if depth <= 0 or not can_move(board):
             result = self.evaluator.value(board) if can_move(board) else -2.0
         else:
             best = -1e30
