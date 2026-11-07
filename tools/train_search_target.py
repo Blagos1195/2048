@@ -205,6 +205,7 @@ def main():
             writer = csv.DictWriter(file, fieldnames=training_fields)
             if file.tell() == 0:
                 writer.writeheader()
+            recent_games = []
             while time.monotonic() - started < args.hours * 3600 and not STOP:
                 batch_size = workers * 2
                 tasks = [
@@ -227,15 +228,28 @@ def main():
                         "td_abs_mean": td_mean,
                         "updates": evaluator.updates,
                     })
-                file.flush()
+                    recent_games.append(collected | {"td_abs_mean": td_mean})
 
-                if episode % 100 == 0:
-                    print(
-                        f"episode={episode_base + episode} additional={episode} "
-                        f"workers={workers} updates={evaluator.updates:,} "
-                        f"elapsed={(time.monotonic() - started) / 60:.1f}m",
-                        flush=True,
-                    )
+                    if len(recent_games) >= 100:
+                        elapsed = time.monotonic() - started
+                        recent_scores = np.asarray([game["score"] for game in recent_games], dtype=np.float64)
+                        recent_tiles = np.asarray([game["max_tile"] for game in recent_games], dtype=np.float64)
+                        print(
+                            f"PROGRESS episode={absolute_episode} additional={episode} window=100 "
+                            f"avg_score={recent_scores.mean():.1f} median_score={np.median(recent_scores):.1f} "
+                            f"rate_2048={np.mean(recent_tiles >= 2048):.1%} "
+                            f"rate_4096={np.mean(recent_tiles >= 4096):.1%} "
+                            f"avg_max_tile={recent_tiles.mean():.1f} "
+                            f"avg_moves={np.mean([game['moves'] for game in recent_games]):.1f} "
+                            f"td_abs_mean={np.mean([game['td_abs_mean'] for game in recent_games]):.6g} "
+                            f"updates={evaluator.updates:,} "
+                            f"updates_per_second={evaluator.updates / max(elapsed, 1):.1f} "
+                            f"episodes_per_minute={episode / max(elapsed / 60, 1e-9):.1f} "
+                            f"elapsed={elapsed / 60:.1f}m",
+                            flush=True,
+                        )
+                        recent_games.clear()
+                file.flush()
 
                 if episode // 1000 > last_validation // 1000:
                     last_validation = episode
@@ -248,6 +262,18 @@ def main():
                     validation = ai.evaluate_depths(
                         evaluator, games=50, depths=[2], seed_start=1_000_000, pool=pool
                     )[0]
+                    print(
+                        f"VALIDATION episode={absolute_episode} quality={quality(validation):.2f} "
+                        f"avg_score={validation['avg_score']:.1f} "
+                        f"median_score={validation['median_score']:.1f} "
+                        f"rate_2048={validation['rate_2048']:.1%} "
+                        f"rate_4096={validation['rate_4096']:.1%} "
+                        f"avg_max_tile={validation['avg_max_tile']:.1f} "
+                        f"best_max_tile={validation['best_max_tile']} "
+                        f"avg_moves={validation['avg_moves']:.1f} "
+                        f"best_quality_before={best_quality:.2f}",
+                        flush=True,
+                    )
                     if quality(validation) > best_quality:
                         best_quality = quality(validation)
                         evaluator.save(best_path, {
