@@ -144,6 +144,8 @@ def main():
     reservoirs = {}
     rng = random.Random(args.seed)
     episode = 0
+    seed_counter = 0
+    last_progress = 0
     best_quality = float("-inf")
     started = time.monotonic()
     last_validation = 0
@@ -179,7 +181,7 @@ def main():
                 batch_size = workers
                 tasks = [
                     (
-                        args.seed + episode + offset,
+                        args.seed + seed_counter + offset,
                         args.epsilon,
                         args.late_epsilon,
                         args.late_tile_threshold,
@@ -188,6 +190,7 @@ def main():
                     )
                     for offset in range(1, batch_size + 1)
                 ]
+                seed_counter += batch_size
                 collected_batch = list(pool.map(research.collect_episode, tasks))
 
                 work = [("normal", collected) for collected in collected_batch]
@@ -204,13 +207,14 @@ def main():
                         break
                     state_bytes, stage = selected
                     restart_tasks.append((
-                        args.seed + episode + batch_size + offset + 1,
+                        args.seed + seed_counter + offset + 1,
                         args.epsilon,
                         args.late_epsilon,
                         args.late_tile_threshold,
                         args.target_depth,
                         state_bytes,
                     ))
+                seed_counter += len(restart_tasks)
                 if restart_tasks:
                     restarted = list(pool.map(research.collect_episode, restart_tasks))
                     work.extend(("restart", item) for item in restarted)
@@ -243,7 +247,8 @@ def main():
                 shared_weights[:] = evaluator.weights
                 file.flush()
 
-                if episode % 100 == 0:
+                if episode // 100 > last_progress // 100:
+                    last_progress = episode
                     window = recent[-100:]
                     scores = np.asarray([row["score"] for row in window], dtype=np.float64)
                     tiles = np.asarray([row["max_tile"] for row in window], dtype=np.uint32)
