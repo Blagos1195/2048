@@ -3,7 +3,7 @@ name: Policy-value speed experiment
 on:
   push:
     branches:
-      - main\n      - policy-value-speed-experiment
+      - main
     paths:
       - ".github/workflows/policy-value-experiment.yml"
       - "policy_value_ai.py"
