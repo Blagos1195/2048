@@ -87,6 +87,7 @@ def main():
     parser.add_argument("--target-depth", type=int, default=2)
     parser.add_argument("--validation-games", type=int, default=20)
     parser.add_argument("--comparison-games", type=int, default=100)
+    parser.add_argument("--deep-comparison-games", type=int, default=10)
     parser.add_argument("--optimism", type=float, default=2500.0)
     parser.add_argument("--seed", type=int, default=20261108)
     args = parser.parse_args()
@@ -312,7 +313,7 @@ def main():
         )
         baseline_reports.extend(run_validation(
             pool, shared_weights, baseline,
-            10, 50_000_000, depths=(3,),
+            args.deep_comparison_games, 50_000_000, depths=(3,),
         ))
         best_reports = run_validation(
             pool, shared_weights, best,
