@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import csv
-import os
+import sys
 import time
 from pathlib import Path
 
 import numpy as np
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import selfplay_ai as game
 from policy_value_ai import FastSelectiveAgent, PolicyValueNet, symmetries
 
@@ -27,9 +28,9 @@ def collect(teacher, games=60):
             state = env.board.copy()
             action = agent.choose_action(state)
             target = agent._player(state, agent.depth, action)
-            for augmented in symmetries(state):
+            for augmented, augmented_action in symmetries(state, action):
                 boards.append(augmented)
-                actions.append(action)
+                actions.append(augmented_action)
                 targets.append(target)
             env.step(action)
         if (episode + 1) % 10 == 0:
