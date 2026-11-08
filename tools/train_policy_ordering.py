@@ -116,11 +116,10 @@ def policy_metrics(model, boards, scores, legal):
 
 class PolicyOrderingAgent:
     def __init__(self, evaluator, policy, top_k, seed):
-        self.evaluator = evaluator
+        self.search = game.ExpectimaxAgent(evaluator, depth=2, seed=seed)
         self.policy = policy
         self.top_k = top_k
         self.rng = random.Random(seed)
-        self.depth = 2
 
     def choose_action(self, board):
         legal = game.legal_actions(board)
@@ -128,7 +127,7 @@ class PolicyOrderingAgent:
             raise ValueError("No legal actions available")
         logits = self.policy.predict(board)
         ranked = sorted(legal, key=lambda action: float(logits[action]), reverse=True)[:self.top_k]
-        scored = [(self.evaluator._player(board, self.depth, action), action) for action in ranked]
+        scored = [(self.search._player(board, self.search.depth, action), action) for action in ranked]
         best = max(value for value, _ in scored)
         return self.rng.choice([action for value, action in scored if abs(value - best) < 1e-9])
 
