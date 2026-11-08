@@ -1,0 +1,48 @@
+name: Research mastery checks
+
+on:
+  push:
+    branches:
+      - research-mastery
+    paths:
+      - "research_ai.py"
+      - "tools/train_research_master.py"
+      - "tests/test_research_ai.py"
+      - ".github/workflows/research-mastery-checks.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research-mastery
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Compile
+        run: python -m py_compile selfplay_ai.py research_ai.py tools/train_research_master.py
+      - name: Test
+        run: python -m pytest -q tests/test_selfplay.py tests/test_research_ai.py
+      - name: Run research training smoke test
+        run: |
+          python -u tools/train_research_master.py \
+            --resume models/selfplay/best.npz \
+            --out models/research-smoke \
+            --hours 0.02 \
+            --max-episodes 3 \
+            --workers 1 \
+            --validation-games 2 \
+            --comparison-games 2 \
+            --deep-comparison-games 1 \
+            --target-depth 1 \
+            --target-interval 16 \
+            --target-horizon 2
