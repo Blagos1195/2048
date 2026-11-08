@@ -39,7 +39,7 @@ def test_temporal_coherence_reduces_rate_after_conflicting_updates():
     state = np.zeros((4, 4), dtype=np.uint32)
     model.update_target(state, 100.0)
     first_weight = float(model.weights[0, 0, 0])
-    model.update_target(state, 0.0)
+    model.update_target(state, -50.0)
     assert model.coherence_abs[0, 0, 0] > abs(model.coherence_sum[0, 0, 0])
     assert model.weights[0, 0, 0] != first_weight
 
