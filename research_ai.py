@@ -93,10 +93,10 @@ class MultiStageNTupleValue:
         contribution = np.float32((float(target) - float(
             self.weights[stage, pattern_ids, indices].sum(dtype=np.float64)
         )) / ai.PATTERN_COUNT)
-        signed = self.coherence_sum[stage, pattern_ids, indices]
-        absolute = self.coherence_abs[stage, pattern_ids, indices]
-        signed += contribution
-        absolute += abs(contribution)
+        signed = self.coherence_sum[stage, pattern_ids, indices] + contribution
+        absolute = self.coherence_abs[stage, pattern_ids, indices] + abs(contribution)
+        self.coherence_sum[stage, pattern_ids, indices] = signed
+        self.coherence_abs[stage, pattern_ids, indices] = absolute
         rates = self.alpha * np.abs(signed) / np.maximum(absolute, 1e-12)
         self.weights[stage, pattern_ids, indices] += rates * contribution
         self.updates += 1
