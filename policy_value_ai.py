@@ -10,12 +10,18 @@ def encode(board):
     return np.log2(np.maximum(values, 1.0)).astype(np.float32) / 16.0
 
 
-def symmetries(board):
+def symmetries(board, action):
     matrix = np.asarray(board).reshape(4, 4)
+    vectors = ((0, -1), (1, 0), (0, 1), (-1, 0))
+    dr, dc = vectors[action]
     for k in range(4):
+        for _ in range(k):
+            dr, dc = -dc, dr
         rotated = np.rot90(matrix, k)
-        yield rotated.reshape(16).copy()
-        yield np.fliplr(rotated).reshape(16).copy()
+        yield rotated.reshape(16).copy(), vectors.index((dr, dc))
+        mirrored = np.fliplr(rotated)
+        yield mirrored.reshape(16).copy(), vectors.index((dr, -dc))
+        dr, dc = vectors[action]
 
 
 class PolicyValueNet:
