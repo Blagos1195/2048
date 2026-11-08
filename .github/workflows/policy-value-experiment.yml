@@ -1,0 +1,48 @@
+name: Policy-value speed experiment
+
+on:
+  push:
+    branches:
+      - policy-value-speed-experiment
+    paths:
+      - ".github/workflows/policy-value-experiment.yml"
+      - "policy_value_ai.py"
+      - "tools/train_policy_value.py"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  train-and-compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Restore teacher model
+        uses: actions/download-artifact@v4
+        with:
+          name: search-target-training
+          run-id: 42387625321
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: models/restored-search-target
+      - name: Verify and train
+        run: |
+          test -s models/restored-search-target/latest.npz
+          python -m py_compile selfplay_ai.py policy_value_ai.py tools/train_policy_value.py
+          python -u tools/train_policy_value.py
+      - name: Save experiment
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: policy-value-speed-experiment
+          path: models/policy-value/
+          if-no-files-found: warn
+          retention-days: 90
