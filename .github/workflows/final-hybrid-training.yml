@@ -1,0 +1,76 @@
+name: Final hybrid training
+
+on:
+  push:
+    paths:
+      - ".github/workflows/final-hybrid-training.yml"
+      - "tools/train_final_hybrid.py"
+  workflow_dispatch:
+
+concurrency:
+  group: final-hybrid-training
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Restore strongest search-target checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: search-target-training
+          run-id: 42387625321
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: models/restored-search-target
+      - name: Prepare isolated final candidate
+        run: |
+          mkdir -p models/final-hybrid
+          test -s models/restored-search-target/latest.npz
+          test -s models/restored-search-target/best.npz
+          test -s models/restored-search-target/published-champion.npz
+          cp models/restored-search-target/latest.npz models/final-hybrid/latest.npz
+          cp models/restored-search-target/latest.npz models/final-hybrid/starting.npz
+          cp models/restored-search-target/best.npz models/final-hybrid/best.npz
+          cp models/restored-search-target/published-champion.npz models/final-hybrid/published-champion.npz
+          python -m py_compile selfplay_ai.py tools/train_final_hybrid.py
+      - name: Train the final hybrid candidate
+        shell: bash
+        run: |
+          set +e
+          timeout --signal=INT --kill-after=180s 19800s python -u tools/train_final_hybrid.py \
+            --resume models/final-hybrid/latest.npz \
+            --champion models/final-hybrid/published-champion.npz \
+            --out models/final-hybrid \
+            --hours 5.0 \
+            --workers 0 \
+            --target-depth 3 \
+            --target-horizon 4 \
+            --target-interval 16 \
+            --epsilon 0.08 \
+            --late-epsilon 0.18 \
+            --validation-games 20
+          status=$?
+          if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then
+            exit "$status"
+          fi
+      - name: Save final candidate and training history
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-hybrid-training
+          path: models/final-hybrid/
+          if-no-files-found: warn
+          retention-days: 90
