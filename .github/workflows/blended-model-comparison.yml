@@ -1,0 +1,55 @@
+name: Blended model comparison
+
+on:
+  push:
+    paths:
+      - ".github/workflows/blended-model-comparison.yml"
+      - "tools/compare_blended_models.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Restore adaptive and search-target checkpoints
+        uses: actions/download-artifact@v4
+        with:
+          name: slow-epsilon-max-length-training
+          run-id: 42220402869
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: models/comparison/adaptive
+      - name: Restore search-target experiment checkpoints
+        uses: actions/download-artifact@v4
+        with:
+          name: search-target-training
+          run-id: 42387625321
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: models/comparison/search-target
+      - name: Validate checkpoints and script
+        run: |
+          test -s models/comparison/adaptive/best.npz
+          test -s models/comparison/search-target/latest.npz
+          python -m py_compile selfplay_ai.py tools/compare_blended_models.py
+      - name: Compare blended models on identical games
+        run: python -u tools/compare_blended_models.py
+      - name: Save comparison results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blended-model-comparison-100-games
+          path: models/comparison/blend-comparison-100-games.csv
+          if-no-files-found: warn
+          retention-days: 30
