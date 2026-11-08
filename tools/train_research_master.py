@@ -55,10 +55,10 @@ def apply_episode(evaluator, transitions, target_interval, horizon, target_depth
     return float(np.mean(errors)) if errors else 0.0
 
 
-def run_validation(pool, shared_weights, evaluator, games, seed):
+def run_validation(pool, shared_weights, evaluator, games, seed, depths=(2, 3)):
     shared_weights[:] = evaluator.weights
     return research.evaluate_depths(
-        evaluator, games=games, depths=[2, 3], seed_start=seed, pool=pool
+        evaluator, games=games, depths=list(depths), seed_start=seed, pool=pool
     )
 
 
@@ -308,12 +308,20 @@ def main():
 
         baseline_reports = run_validation(
             pool, shared_weights, baseline,
-            args.comparison_games, 50_000_000,
+            args.comparison_games, 50_000_000, depths=(2,),
         )
+        baseline_reports.extend(run_validation(
+            pool, shared_weights, baseline,
+            10, 50_000_000, depths=(3,),
+        ))
         best_reports = run_validation(
             pool, shared_weights, best,
-            args.comparison_games, 50_000_000,
+            args.comparison_games, 50_000_000, depths=(2,),
         )
+        best_reports.extend(run_validation(
+            pool, shared_weights, best,
+            10, 50_000_000, depths=(3,),
+        ))
         save_comparison(benchmark_path, [
             ("baseline", baseline_reports),
             ("research-best", best_reports),
