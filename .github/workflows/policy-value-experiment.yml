@@ -1,4 +1,4 @@
-name: Policy-value speed experiment
+run-name: Policy-value speed experiment\n\nname: Policy-value speed experiment
 
 on:
   push:
