@@ -1,0 +1,84 @@
+name: Research mastery training
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Completed final-hybrid training run to use as the starting checkpoint
+        required: true
+        default: "42498296581"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: research-mastery-training
+  cancel-in-progress: false
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research-mastery
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Restore final hybrid checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: final-hybrid-training
+          run-id: ${{ inputs.source_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: models/source
+      - name: Check source checkpoint
+        run: |
+          test -s models/source/best.npz
+          python -m py_compile selfplay_ai.py research_ai.py tools/train_research_master.py
+      - name: Test research evaluator
+        run: python -m pytest -q tests/test_selfplay.py tests/test_research_ai.py
+      - name: Run short training smoke test
+        run: |
+          python -u tools/train_research_master.py \
+            --resume models/source/best.npz \
+            --out models/research-smoke \
+            --hours 0.02 \
+            --max-episodes 3 \
+            --workers 1 \
+            --validation-games 2 \
+            --comparison-games 2 \
+            --target-depth 1 \
+            --target-interval 16 \
+            --target-horizon 2
+      - name: Train optimistic multistage TD candidate
+        run: |
+          python -u tools/train_research_master.py \
+            --resume models/source/best.npz \
+            --out models/research-mastery \
+            --hours 5.75 \
+            --workers 0 \
+            --validation-games 20 \
+            --comparison-games 100 \
+            --epsilon 0.03 \
+            --late-epsilon 0.08 \
+            --target-depth 2 \
+            --target-interval 32 \
+            --target-horizon 4 \
+            --optimism 2500
+      - name: Save research checkpoints and results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-mastery-training
+          path: |
+            models/research-mastery/
+            models/research-smoke/
+          if-no-files-found: warn
+          retention-days: 90
