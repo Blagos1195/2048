@@ -154,3 +154,22 @@ def test_tile_downgraded_evaluator_keeps_original_learning_stage():
     wrapped = research.TileDowngradedEvaluator(model)
     assert model.stage_for(board) == 4
     assert wrapped.value(board) == pytest.approx(ai.PATTERN_COUNT * 4.0)
+
+
+def test_tile_downgrade_uses_the_highest_missing_tile_levels():
+    board = np.zeros((4, 4), dtype=np.uint32)
+    board[0, :4] = [2, 4, 16, 256]
+    assert research.tile_downgrade(board, shifts=1)[0, :4].tolist() == [2, 4, 16, 128]
+    assert research.tile_downgrade(board, shifts=2)[0, :4].tolist() == [2, 4, 16, 64]
+
+
+def test_tile_downgrade_age_advances_with_real_moves():
+    model = research.MultiStageNTupleValue()
+    wrapped = research.TileDowngradedEvaluator(model)
+    agent = ai.ExpectimaxAgent(wrapped, depth=1, seed=44)
+    board = np.zeros((4, 4), dtype=np.uint32)
+    board[0, :2] = [32768, 16384]
+    agent.choose_action(board)
+    assert wrapped.steps == 1
+    agent.choose_action(board)
+    assert wrapped.steps == 2
