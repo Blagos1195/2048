@@ -12,14 +12,14 @@ import selfplay_ai as ai
 
 
 STAGE_THRESHOLDS = np.asarray(
-    [0, 2048, 4096, 8192, 16384, 32768, 65536, 131072],
+    [0, 8192, 16384, 32768, 65536, 131072],
     dtype=np.uint32,
 )
 MILESTONES = (2048, 4096, 8192, 16384, 32768, 65536, 131072)
 
 
 class MultiStageNTupleValue:
-    def __init__(self, weights=None, alpha=0.08, gamma=0.995, optimism=2500.0):
+    def __init__(self, weights=None, alpha=0.08, gamma=0.995, optimism=320000.0, learning_mode="td"): 
         shape = (len(STAGE_THRESHOLDS), ai.PATTERN_COUNT, ai.PATTERN_TABLE_SIZE)
         self.weights = (
             np.zeros(shape, dtype=np.float32)
@@ -32,10 +32,13 @@ class MultiStageNTupleValue:
         self.alpha = float(alpha)
         self.gamma = float(gamma)
         self.optimism = float(optimism)
+        self.learning_mode = str(learning_mode)
+        if self.learning_mode not in ("td", "tc"):
+            raise ValueError("learning_mode must be 'td' or 'tc'")
         self.updates = 0
 
     @classmethod
-    def from_checkpoint(cls, path, optimism=2500.0):
+    def from_checkpoint(cls, path, optimism=320000.0):
         base = ai.NTupleValue()
         base.load(path)
         weights = np.broadcast_to(
@@ -93,12 +96,15 @@ class MultiStageNTupleValue:
         contribution = np.float32((float(target) - float(
             self.weights[stage, pattern_ids, indices].sum(dtype=np.float64)
         )) / ai.PATTERN_COUNT)
-        signed = self.coherence_sum[stage, pattern_ids, indices] + contribution
-        absolute = self.coherence_abs[stage, pattern_ids, indices] + abs(contribution)
-        self.coherence_sum[stage, pattern_ids, indices] = signed
-        self.coherence_abs[stage, pattern_ids, indices] = absolute
-        rates = self.alpha * np.abs(signed) / np.maximum(absolute, 1e-12)
-        self.weights[stage, pattern_ids, indices] += rates * contribution
+        if self.learning_mode == "tc":
+            signed = self.coherence_sum[stage, pattern_ids, indices] + contribution
+            absolute = self.coherence_abs[stage, pattern_ids, indices] + abs(contribution)
+            self.coherence_sum[stage, pattern_ids, indices] = signed
+            self.coherence_abs[stage, pattern_ids, indices] = absolute
+            rates = self.alpha * np.abs(signed) / np.maximum(absolute, 1e-12)
+            self.weights[stage, pattern_ids, indices] += rates * contribution
+        else:
+            self.weights[stage, pattern_ids, indices] += self.alpha * contribution
         self.updates += 1
         return float(contribution) * ai.PATTERN_COUNT
 
@@ -122,6 +128,7 @@ class MultiStageNTupleValue:
                 alpha=self.alpha,
                 gamma=self.gamma,
                 optimism=self.optimism,
+                learning_mode=np.array(self.learning_mode),
                 updates=self.updates,
                 metadata=np.array(str(metadata or {})),
             )
@@ -142,6 +149,7 @@ class MultiStageNTupleValue:
             self.alpha = float(data["alpha"])
             self.gamma = float(data["gamma"])
             self.optimism = float(data["optimism"])
+            self.learning_mode = str(data["learning_mode"].item()) if "learning_mode" in data else "tc"
             self.updates = int(data["updates"])
 
 
@@ -156,6 +164,7 @@ def init_worker(shm_name, shape, alpha, gamma, depth):
     evaluator.alpha = float(alpha)
     evaluator.gamma = float(gamma)
     evaluator.optimism = 0.0
+    evaluator.learning_mode = "td"
     evaluator.updates = 0
     ai._WORKER_SHM = memory
     ai._WORKER_WEIGHTS = weights
