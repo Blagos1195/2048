@@ -19,9 +19,9 @@ def test_stage_specific_values_are_selected():
     model.weights[1].fill(1.0)
     model.weights[2].fill(2.0)
     board = np.zeros((4, 4), dtype=np.uint32)
-    board[0, 0] = 2048
+    board[0, 0] = 8192
     assert model.value(board) == pytest.approx(ai.PATTERN_COUNT)
-    board[0, 0] = 4096
+    board[0, 0] = 16384
     assert model.value(board) == pytest.approx(ai.PATTERN_COUNT * 2)
 
 
@@ -124,7 +124,7 @@ def test_optimistic_td_uses_fixed_learning_rate_before_tc():
     model = research.MultiStageNTupleValue(alpha=0.1, learning_mode="td")
     state = np.zeros((4, 4), dtype=np.uint32)
     model.update_target(state, 100.0)
-    assert np.all(model.weights[0, :, 0] == pytest.approx(0.1 * 100.0 / ai.PATTERN_COUNT))
+    assert np.allclose(model.weights[0, :, 0], 0.1 * 100.0 / ai.PATTERN_COUNT)
     assert not np.any(model.coherence_sum)
     model.learning_mode = "tc"
     model.coherence_sum.fill(0.0)
