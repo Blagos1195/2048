@@ -54,6 +54,7 @@ jobs:
             --workers 1 \
             --validation-games 2 \
             --comparison-games 2 \
+            --deep-comparison-games 1 \
             --target-depth 1 \
             --target-interval 16 \
             --target-horizon 2
