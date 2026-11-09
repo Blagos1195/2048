@@ -63,7 +63,7 @@ jobs:
           python -u tools/train_research_master.py \
             --resume models/source/best.npz \
             --out models/research-mastery \
-            --hours 3.5 \
+            --hours 2.75 \
             --workers 0 \
             --validation-games 20 \
             --comparison-games 1000 \
@@ -74,7 +74,7 @@ jobs:
             --target-interval 32 \
             --target-horizon 4 \
             --optimism 320000 \
-          --otd-fraction 0.9
+            --otd-fraction 0.9
       - name: Save research checkpoints and results
         if: always()
         uses: actions/upload-artifact@v4
