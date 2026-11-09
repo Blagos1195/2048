@@ -135,3 +135,22 @@ def test_optimistic_td_uses_fixed_learning_rate_before_tc():
 
 def test_multistage_thresholds_focus_on_late_game_milestones():
     assert research.STAGE_THRESHOLDS.tolist() == [0, 8192, 16384, 32768, 65536, 131072]
+
+
+def test_tile_downgrade_compresses_high_tile_gaps_without_merging_ranks():
+    board = np.zeros((4, 4), dtype=np.uint32)
+    board[0, :3] = [2, 4, 16]
+    downgraded = research.tile_downgrade(board)
+    assert downgraded[0, :3].tolist() == [2, 4, 8]
+    assert board[0, :3].tolist() == [2, 4, 16]
+
+
+def test_tile_downgraded_evaluator_keeps_original_learning_stage():
+    model = research.MultiStageNTupleValue()
+    model.weights[3].fill(3.0)
+    model.weights[4].fill(4.0)
+    board = np.zeros((4, 4), dtype=np.uint32)
+    board[0, :4] = [2, 4, 8, 65536]
+    wrapped = research.TileDowngradedEvaluator(model)
+    assert model.stage_for(board) == 4
+    assert wrapped.value(board) == pytest.approx(ai.PATTERN_COUNT * 4.0)
