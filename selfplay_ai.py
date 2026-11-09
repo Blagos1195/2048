@@ -498,7 +498,7 @@ class ExpectimaxAgent:
         self.cache_hits = 0
         self._cache_updates = evaluator.updates
 
-    def _cache_key(self, board: np.ndarray, depth: int) -> tuple[bytes, int]:
+    def _cache_key(self, board: np.ndarray, depth: int) -> tuple[bytes, int, int]:
 
         if self._cache_updates != self.evaluator.updates:
             self._chance_cache.clear()
