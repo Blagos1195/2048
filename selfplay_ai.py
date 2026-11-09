@@ -493,19 +493,19 @@ class ExpectimaxAgent:
         self.nodes = 0
         self.cache_size = int(cache_size)
 
-        self._chance_cache: OrderedDict[tuple[bytes, int], float] = OrderedDict()
-        self._player_cache: OrderedDict[tuple[bytes, int], float] = OrderedDict()
+        self._chance_cache: OrderedDict[tuple[bytes, int, int], float] = OrderedDict()
+        self._player_cache: OrderedDict[tuple[bytes, int, int], float] = OrderedDict()
         self.cache_hits = 0
         self._cache_updates = evaluator.updates
 
-    def _cache_key(self, board: np.ndarray, depth: int) -> tuple[bytes, int]:
+    def _cache_key(self, board: np.ndarray, depth: int) -> tuple[bytes, int, int]:
 
         if self._cache_updates != self.evaluator.updates:
             self._chance_cache.clear()
             self._player_cache.clear()
             self._cache_updates = self.evaluator.updates
 
-        return (board.tobytes(), depth)
+        return (board.tobytes(), depth, int(getattr(self.evaluator, "steps", 0)))
 
     def _cache_get(self, cache: OrderedDict, key):
         value = cache.get(key)
@@ -521,6 +521,8 @@ class ExpectimaxAgent:
             cache.popitem(last=False)
 
     def choose_action(self, board: np.ndarray) -> int:
+        if hasattr(self.evaluator, "begin_turn"):
+            self.evaluator.begin_turn(board)
         exploration_rate = self.late_epsilon if int(np.max(board)) >= self.late_tile_threshold else self.epsilon
         if self.rng.random() < exploration_rate:
             actions = legal_actions(board)
@@ -546,6 +548,16 @@ class ExpectimaxAgent:
             return -1e30
         return merge_score / 128.0 + self._chance(moved, depth - 1)
 
+    def _search_value(self, board: np.ndarray, depth: int) -> float:
+        steps = int(getattr(self.evaluator, "steps", 0)) + max(0, self.depth - 1 - depth)
+        method = getattr(self.evaluator, "value_for_search", None)
+        return method(board, steps) if method else self.evaluator.value(board)
+
+    def _search_expected_spawn_value(self, board: np.ndarray, depth: int) -> float:
+        steps = int(getattr(self.evaluator, "steps", 0)) + max(0, self.depth - 1 - depth)
+        method = getattr(self.evaluator, "expected_spawn_value_for_search", None)
+        return method(board, steps) if method else self.evaluator.expected_spawn_value(board)
+
     def _chance(self, board: np.ndarray, depth: int) -> float:
         key = self._cache_key(board, depth)
         cached = self._cache_get(self._chance_cache, key)
@@ -553,13 +565,13 @@ class ExpectimaxAgent:
             return cached
         self.nodes += 1
         if depth <= 0:
-            result = self.evaluator.expected_spawn_value(board)
+            result = self._search_expected_spawn_value(board, depth)
             self._cache_set(self._chance_cache, key, result)
             return result
         flat = board.reshape(-1)
         empty = np.flatnonzero(flat == 0)
         if len(empty) == 0:
-            result = self.evaluator.value(board) if can_move(board) else -2.0
+            result = self._search_value(board, depth) if can_move(board) else -2.0
             self._cache_set(self._chance_cache, key, result)
             return result
         total = 0.0
@@ -580,7 +592,7 @@ class ExpectimaxAgent:
         if cached is not None:
             return cached
         if depth <= 0 or not can_move(board):
-            result = self.evaluator.value(board) if can_move(board) else -2.0
+            result = self._search_value(board, depth) if can_move(board) else -2.0
         else:
             best = -1e30
             for action in ACTIONS:
