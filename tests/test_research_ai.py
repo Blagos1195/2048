@@ -7,9 +7,11 @@ import research_ai as research
 
 def test_stage_boundaries():
     assert research.MultiStageNTupleValue.stage_for(np.array([[2]], dtype=np.uint32)) == 0
-    assert research.MultiStageNTupleValue.stage_for(np.array([[2048]], dtype=np.uint32)) == 1
-    assert research.MultiStageNTupleValue.stage_for(np.array([[4096]], dtype=np.uint32)) == 2
-    assert research.MultiStageNTupleValue.stage_for(np.array([[131072]], dtype=np.uint32)) == 7
+    assert research.MultiStageNTupleValue.stage_for(np.array([[2048]], dtype=np.uint32)) == 0
+    assert research.MultiStageNTupleValue.stage_for(np.array([[8192]], dtype=np.uint32)) == 1
+    assert research.MultiStageNTupleValue.stage_for(np.array([[16384]], dtype=np.uint32)) == 2
+    assert research.MultiStageNTupleValue.stage_for(np.array([[32768]], dtype=np.uint32)) == 3
+    assert research.MultiStageNTupleValue.stage_for(np.array([[131072]], dtype=np.uint32)) == 5
 
 
 def test_stage_specific_values_are_selected():
@@ -24,7 +26,7 @@ def test_stage_specific_values_are_selected():
 
 
 def test_temporal_coherence_updates_the_selected_stage():
-    model = research.MultiStageNTupleValue(alpha=0.1)
+    model = research.MultiStageNTupleValue(alpha=0.1, learning_mode="tc")
     state = np.zeros((4, 4), dtype=np.uint32)
     delta = model.update_target(state, 100.0)
     assert delta == pytest.approx(100.0)
@@ -35,7 +37,7 @@ def test_temporal_coherence_updates_the_selected_stage():
 
 
 def test_temporal_coherence_reduces_rate_after_conflicting_updates():
-    model = research.MultiStageNTupleValue(alpha=0.1)
+    model = research.MultiStageNTupleValue(alpha=0.1, learning_mode="tc")
     state = np.zeros((4, 4), dtype=np.uint32)
     model.update_target(state, 100.0)
     first_weight = float(model.weights[0, 0, 0])
@@ -114,5 +116,22 @@ def test_restart_episode_uses_supplied_board():
     result = research.collect_episode(
         (123, 0.0, 0.0, 1024, 1, board.tobytes())
     )
-    assert result["start_stage"] == 5
+    assert result["start_stage"] == 3
     assert result["moves"] > 0
+
+
+def test_optimistic_td_uses_fixed_learning_rate_before_tc():
+    model = research.MultiStageNTupleValue(alpha=0.1, learning_mode="td")
+    state = np.zeros((4, 4), dtype=np.uint32)
+    model.update_target(state, 100.0)
+    assert np.all(model.weights[0, :, 0] == pytest.approx(0.1 * 100.0 / ai.PATTERN_COUNT))
+    assert not np.any(model.coherence_sum)
+    model.learning_mode = "tc"
+    model.coherence_sum.fill(0.0)
+    model.coherence_abs.fill(0.0)
+    model.update_target(state, 50.0)
+    assert np.all(model.coherence_sum[0, :, 0] > 0)
+
+
+def test_multistage_thresholds_focus_on_late_game_milestones():
+    assert research.STAGE_THRESHOLDS.tolist() == [0, 8192, 16384, 32768, 65536, 131072]
