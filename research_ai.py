@@ -18,6 +18,69 @@ STAGE_THRESHOLDS = np.asarray(
 MILESTONES = (2048, 4096, 8192, 16384, 32768, 65536, 131072)
 
 
+def tile_downgrade(board, shifts=None):
+    source = np.asarray(board, dtype=np.uint32)
+    flat = source.reshape(-1)
+    exponents = np.zeros(flat.shape, dtype=np.int16)
+    occupied = []
+    for index, raw_value in enumerate(flat):
+        value = int(raw_value)
+        if value == 0:
+            continue
+        exponent = value.bit_length() - 1
+        if 1 << exponent != value:
+            raise ValueError("tile values must be powers of two")
+        exponents[index] = exponent
+        occupied.append(exponent)
+    if not occupied:
+        return source.copy()
+    maximum = max(occupied)
+    holes = [value for value in range(1, maximum) if value not in set(occupied)]
+    if not holes:
+        return source.copy()
+    if shifts is None:
+        shifts = max(1, maximum - ai.TILE_EXPONENT_CAP)
+    shifts = max(0, int(shifts))
+    if shifts == 0:
+        return source.copy()
+    selected = holes[-shifts:]
+    lowest = selected[0]
+    result = np.zeros(flat.shape, dtype=np.uint32)
+    for index, exponent in enumerate(exponents):
+        exponent = int(exponent)
+        if exponent >= lowest:
+            exponent -= sum(hole < exponent for hole in selected)
+        result[index] = 1 << exponent if exponent else 0
+    return result.reshape(source.shape)
+
+
+class TileDowngradedEvaluator:
+    def __init__(self, evaluator, threshold=32768):
+        self.evaluator = evaluator
+        self.threshold = int(threshold)
+
+    @property
+    def updates(self):
+        return self.evaluator.updates
+
+    def _board(self, board):
+        if int(np.max(board)) < self.threshold:
+            return board
+        return tile_downgrade(board)
+
+    def value(self, board):
+        stage = self.evaluator.stage_for(board)
+        return self.evaluator.value(
+            self._board(board), stage_override=stage
+        )
+
+    def expected_spawn_value(self, board):
+        stage = self.evaluator.stage_for(board)
+        return self.evaluator.expected_spawn_value(
+            self._board(board), stage_override=stage
+        )
+
+
 class MultiStageNTupleValue:
     def __init__(self, weights=None, alpha=0.08, gamma=0.995, optimism=320000.0, learning_mode="td"): 
         shape = (len(STAGE_THRESHOLDS), ai.PATTERN_COUNT, ai.PATTERN_TABLE_SIZE)
@@ -55,8 +118,8 @@ class MultiStageNTupleValue:
         maximum = int(np.max(board))
         return int(np.searchsorted(STAGE_THRESHOLDS, maximum, side="right") - 1)
 
-    def value(self, board):
-        stage = self.stage_for(board)
+    def value(self, board, stage_override=None):
+        stage = self.stage_for(board) if stage_override is None else int(stage_override)
         return float(ai._value_kernel(
             np.asarray(board).reshape(-1),
             ai._TILE_EXPONENT_LOOKUP,
@@ -66,15 +129,15 @@ class MultiStageNTupleValue:
             ai._PATTERN_WEIGHT_OFFSETS,
         ))
 
-    def expected_spawn_value(self, board):
+    def expected_spawn_value(self, board, stage_override=None):
         flat = np.asarray(board).reshape(-1)
         empty_mask = 0
         for cell, value in enumerate(flat):
             if value == 0:
                 empty_mask |= 1 << cell
+        stage = self.stage_for(board) if stage_override is None else int(stage_override)
         if empty_mask == 0:
-            return self.value(board)
-        stage = self.stage_for(board)
+            return self.value(board, stage_override=stage)
         patterns, positions = ai._empty_pattern_memberships(empty_mask)
         return float(ai._expected_spawn_value_kernel(
             flat,
@@ -216,18 +279,30 @@ def collect_episode(task):
     }
 
 
-def evaluate_depths(evaluator, games, depths, seed_start, pool=None):
+def _evaluate_research_worker(task):
+    seed, depth, use_downgrade = task
+    evaluator = ai._WORKER_EVALUATOR
+    if use_downgrade:
+        evaluator = TileDowngradedEvaluator(evaluator)
+    agent = ai.ExpectimaxAgent(evaluator, depth=depth, seed=seed)
+    return ai.play_game(agent, seed, train=False)
+
+
+def evaluate_depths(evaluator, games, depths, seed_start, pool=None, tile_downgrade_enabled=False):
     reports = []
     for depth in depths:
         started = time.perf_counter()
-        tasks = [(seed_start + i, depth) for i in range(games)]
+        tasks = [(seed_start + i, depth, tile_downgrade_enabled) for i in range(games)]
+        search_evaluator = (
+            TileDowngradedEvaluator(evaluator) if tile_downgrade_enabled else evaluator
+        )
         if pool is None:
             rows = [
-                ai.play_game(ai.ExpectimaxAgent(evaluator, depth=depth, seed=seed), seed)
-                for seed, _ in tasks
+                ai.play_game(ai.ExpectimaxAgent(search_evaluator, depth=depth, seed=seed), seed)
+                for seed, _, _ in tasks
             ]
         else:
-            rows = list(pool.map(ai._evaluate_game_worker, tasks, chunksize=1))
+            rows = list(pool.map(_evaluate_research_worker, tasks, chunksize=1))
         report = ai._summarise_evaluation(rows, depth, time.perf_counter() - started)
         tiles = np.asarray([row["max_tile"] for row in rows], dtype=np.uint32)
         for milestone in MILESTONES:
