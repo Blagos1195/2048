@@ -35,7 +35,8 @@ def tile_downgrade(board, shifts=None):
     if not occupied:
         return source.copy()
     maximum = max(occupied)
-    holes = [value for value in range(1, maximum) if value not in set(occupied)]
+    occupied_set = set(occupied)
+    holes = [value for value in range(1, maximum) if value not in occupied_set]
     if not holes:
         return source.copy()
     if shifts is None:
@@ -50,7 +51,7 @@ def tile_downgrade(board, shifts=None):
         exponent = int(exponent)
         if exponent >= lowest:
             exponent -= sum(hole < exponent for hole in selected)
-        result[index] = 1 << exponent if exponent else 0
+        result[index] = 0 if flat[index] == 0 else 1 << exponent
     return result.reshape(source.shape)
 
 
