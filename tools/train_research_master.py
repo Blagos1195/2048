@@ -55,10 +55,11 @@ def apply_episode(evaluator, transitions, target_interval, horizon, target_depth
     return float(np.mean(errors)) if errors else 0.0
 
 
-def run_validation(pool, shared_weights, evaluator, games, seed, depths=(2, 3)):
+def run_validation(pool, shared_weights, evaluator, games, seed, depths=(2, 3), tile_downgrade_enabled=False):
     shared_weights[:] = evaluator.weights
     return research.evaluate_depths(
-        evaluator, games=games, depths=list(depths), seed_start=seed, pool=pool
+        evaluator, games=games, depths=list(depths), seed_start=seed, pool=pool,
+        tile_downgrade_enabled=tile_downgrade_enabled,
     )
 
 
@@ -360,16 +361,28 @@ def main():
             pool, shared_weights, best,
             args.deep_comparison_games, 50_000_000, depths=(3,),
         ))
+        downgraded_reports = run_validation(
+            pool, shared_weights, best, args.comparison_games, 50_000_000,
+            depths=(2,), tile_downgrade_enabled=True,
+        )
+        downgraded_reports.extend(run_validation(
+            pool, shared_weights, best, args.deep_comparison_games, 50_000_000,
+            depths=(3,), tile_downgrade_enabled=True,
+        ))
         save_comparison(benchmark_path, [
             ("baseline", baseline_reports),
             ("research-best", best_reports),
+            ("research-best-tile-downgraded", downgraded_reports),
         ])
         baseline_quality = research.composite_quality(baseline_reports)
         best_comparison_quality = research.composite_quality(best_reports)
+        downgraded_quality = research.composite_quality(downgraded_reports)
         print(
             f"FINAL COMPARISON games={args.comparison_games} "
             f"baseline={baseline_quality:.2f} research_best={best_comparison_quality:.2f} "
-            f"improvement={best_comparison_quality - baseline_quality:+.2f}",
+            f"improvement={best_comparison_quality - baseline_quality:+.2f} "
+            f"tile_downgraded={downgraded_quality:.2f} "
+            f"downgrade_delta={downgraded_quality - best_comparison_quality:+.2f}",
             flush=True,
         )
         completed = True
