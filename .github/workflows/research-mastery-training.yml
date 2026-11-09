@@ -61,6 +61,7 @@ jobs:
         run: |
           python -u tools/train_research_master.py \
             --resume models/source/best.npz \
+            --baseline models/source/published-champion.npz \
             --out models/research-mastery \
             --hours 2.75 \
             --workers 0 \
