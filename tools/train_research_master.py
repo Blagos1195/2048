@@ -76,6 +76,7 @@ def save_comparison(path, reports):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--resume", required=True)
+    parser.add_argument("--baseline", default=None)
     parser.add_argument("--out", default="models/research-mastery")
     parser.add_argument("--hours", type=float, default=5.75)
     parser.add_argument("--workers", type=int, default=0)
@@ -124,8 +125,9 @@ def main():
         evaluator.save(latest_path, {"source": args.resume, "initialised": True})
         evaluator.save(best_path, {"source": args.resume, "initialised": True})
 
-    baseline = research.MultiStageNTupleValue.from_checkpoint(args.resume, optimism=0.0)
-    baseline.save(baseline_path, {"source": args.resume, "role": "baseline"})
+    baseline_source = args.baseline or args.resume
+    baseline = research.MultiStageNTupleValue.from_checkpoint(baseline_source, optimism=0.0)
+    baseline.save(baseline_path, {"source": baseline_source, "role": "baseline"})
 
     workers = max(1, args.workers or (os.cpu_count() or 1))
     memory = shared_memory.SharedMemory(create=True, size=evaluator.weights.nbytes)
