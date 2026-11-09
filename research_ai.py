@@ -40,7 +40,7 @@ def tile_downgrade(board, shifts=None):
     if not holes:
         return source.copy()
     if shifts is None:
-        shifts = max(1, maximum - ai.TILE_EXPONENT_CAP)
+        shifts = 1
     shifts = max(0, int(shifts))
     if shifts == 0:
         return source.copy()
@@ -59,27 +59,38 @@ class TileDowngradedEvaluator:
     def __init__(self, evaluator, threshold=32768):
         self.evaluator = evaluator
         self.threshold = int(threshold)
+        self.steps = 0
 
     @property
     def updates(self):
         return self.evaluator.updates
 
-    def _board(self, board):
-        if int(np.max(board)) < self.threshold:
-            return board
-        return tile_downgrade(board)
+    def begin_turn(self, board):
+        if int(np.max(board)) >= self.threshold:
+            self.steps += 1
 
-    def value(self, board):
+    def _board(self, board, steps):
+        if int(np.max(board)) < self.threshold or steps <= 0:
+            return board
+        return tile_downgrade(board, shifts=steps)
+
+    def value_for_search(self, board, steps):
         stage = self.evaluator.stage_for(board)
         return self.evaluator.value(
-            self._board(board), stage_override=stage
+            self._board(board, steps), stage_override=stage
         )
 
-    def expected_spawn_value(self, board):
+    def expected_spawn_value_for_search(self, board, steps):
         stage = self.evaluator.stage_for(board)
         return self.evaluator.expected_spawn_value(
-            self._board(board), stage_override=stage
+            self._board(board, steps), stage_override=stage
         )
+
+    def value(self, board):
+        return self.value_for_search(board, max(1, self.steps))
+
+    def expected_spawn_value(self, board):
+        return self.expected_spawn_value_for_search(board, max(1, self.steps))
 
 
 class MultiStageNTupleValue:
@@ -294,14 +305,14 @@ def evaluate_depths(evaluator, games, depths, seed_start, pool=None, tile_downgr
     for depth in depths:
         started = time.perf_counter()
         tasks = [(seed_start + i, depth, tile_downgrade_enabled) for i in range(games)]
-        search_evaluator = (
-            TileDowngradedEvaluator(evaluator) if tile_downgrade_enabled else evaluator
-        )
         if pool is None:
-            rows = [
-                ai.play_game(ai.ExpectimaxAgent(search_evaluator, depth=depth, seed=seed), seed)
-                for seed, _, _ in tasks
-            ]
+            rows = []
+            for seed, _, use_downgrade in tasks:
+                search_evaluator = (
+                    TileDowngradedEvaluator(evaluator) if use_downgrade else evaluator
+                )
+                agent = ai.ExpectimaxAgent(search_evaluator, depth=depth, seed=seed)
+                rows.append(ai.play_game(agent, seed, train=False))
         else:
             rows = list(pool.map(_evaluate_research_worker, tasks, chunksize=1))
         report = ai._summarise_evaluation(rows, depth, time.perf_counter() - started)
