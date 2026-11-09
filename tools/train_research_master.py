@@ -86,9 +86,10 @@ def main():
     parser.add_argument("--target-horizon", type=int, default=4)
     parser.add_argument("--target-depth", type=int, default=2)
     parser.add_argument("--validation-games", type=int, default=20)
-    parser.add_argument("--comparison-games", type=int, default=100)
-    parser.add_argument("--deep-comparison-games", type=int, default=10)
-    parser.add_argument("--optimism", type=float, default=2500.0)
+    parser.add_argument("--comparison-games", type=int, default=1000)
+    parser.add_argument("--deep-comparison-games", type=int, default=100)
+    parser.add_argument("--optimism", type=float, default=320000.0)
+    parser.add_argument("--otd-fraction", type=float, default=0.9)
     parser.add_argument("--seed", type=int, default=20261108)
     args = parser.parse_args()
 
@@ -98,6 +99,8 @@ def main():
         raise SystemExit("exploration rates must be between 0 and 1")
     if args.target_interval < 1 or args.target_horizon < 1 or args.target_depth < 1:
         raise SystemExit("search-target settings must be positive")
+    if not 0.0 < args.otd_fraction < 1.0:
+        raise SystemExit("otd-fraction must be between 0 and 1")
 
     signal.signal(signal.SIGINT, stop_training)
     signal.signal(signal.SIGTERM, stop_training)
@@ -149,6 +152,8 @@ def main():
     last_progress = 0
     best_quality = float("-inf")
     started = time.monotonic()
+    otd_seconds = args.hours * 3600.0 * args.otd_fraction
+    evaluator.learning_mode = "td"
     last_validation = 0
     recent = []
     completed = False
@@ -179,6 +184,16 @@ def main():
                 and not STOP
                 and (not args.max_episodes or episode < args.max_episodes)
             ):
+                elapsed_now = time.monotonic() - started
+                if evaluator.learning_mode == "td" and elapsed_now >= otd_seconds:
+                    evaluator.learning_mode = "tc"
+                    evaluator.coherence_sum.fill(0.0)
+                    evaluator.coherence_abs.fill(0.0)
+                    print(
+                        f"LEARNING PHASE temporal-coherence episode={episode} "
+                        f"elapsed={elapsed_now / 60:.1f}m",
+                        flush=True,
+                    )
                 batch_size = workers
                 tasks = [
                     (
@@ -275,6 +290,7 @@ def main():
                         "updates": evaluator.updates,
                         "stage_thresholds": research.STAGE_THRESHOLDS.tolist(),
                         "optimism": args.optimism,
+                        "learning_mode": evaluator.learning_mode,
                     })
                     validation = run_validation(
                         pool, shared_weights, evaluator,
@@ -302,8 +318,29 @@ def main():
             "episode": episode,
             "updates": evaluator.updates,
             "stopped": STOP,
+            "learning_mode": evaluator.learning_mode,
             "stage_thresholds": research.STAGE_THRESHOLDS.tolist(),
         })
+        final_validation = run_validation(
+            pool, shared_weights, evaluator, args.validation_games, 45_000_000
+        )
+        final_quality = research.composite_quality(final_validation)
+        print(
+            f"FINAL VALIDATION composite={final_quality:.2f} best={best_quality:.2f} "
+            f"mode={evaluator.learning_mode}",
+            flush=True,
+        )
+        if final_quality > best_quality:
+            best_quality = final_quality
+            evaluator.save(best_path, {
+                "episode": episode,
+                "updates": evaluator.updates,
+                "validation": final_validation,
+                "composite_quality": final_quality,
+                "learning_mode": evaluator.learning_mode,
+                "stage_thresholds": research.STAGE_THRESHOLDS.tolist(),
+            })
+            print(f"NEW BEST final quality={final_quality:.2f}", flush=True)
         best = research.MultiStageNTupleValue()
         best.load(best_path)
 
@@ -321,7 +358,7 @@ def main():
         )
         best_reports.extend(run_validation(
             pool, shared_weights, best,
-            10, 50_000_000, depths=(3,),
+            args.deep_comparison_games, 50_000_000, depths=(3,),
         ))
         save_comparison(benchmark_path, [
             ("baseline", baseline_reports),
